@@ -1,0 +1,34 @@
+:PROPERTIES:
+:ID:       f7e253c4-e071-48a9-b567-1d3f51a95330
+:END:
+#+title: Fix
+
+* Wireguard VPN
+- move config files into /etc/wireguard
+- https://engineerworkshop.com/blog/how-to-set-up-a-wireguard-client-on-linux-with-conf-file/
+
+#+begin_src sh
+sudo apt-get install wireguard
+sudo ln -s /usr/bin/resolvectl /usr/local/bin/resolvconf #sol for resolvconf not found
+sudo wg-quick up [conf_name]
+sudo wg #check status
+sudo wg-quick down [conf_name] # disconnect vpn
+#+end_src
+
+* AppImage Not Running
+#+begin_src sh
+sudo apt-get install libfuse2
+#+end_src
+
+* PyQT, Matplotlib, OpenCV
+
+#+begin_src sh
+$sudo apt-get install --reinstall libxcb-xinerama0
+#+end_src
+
+then add following in to the python after import cv2
+#+begin_src python
+import os
+os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
+#+end_src
+

@@ -1,0 +1,317 @@
+:PROPERTIES:
+:ID:       fc2fbd95-72de-4a25-9cb6-f491b48c29e1
+:END:
+#+title: Fine-tune SAM
+
+
+SAM expects two inputs : image and prompt. During training prompt would be the bounding box around the mask.
+The issue arises during the testing. One basicc way would be to give a grid of images spanning the entire image as prompt.
+Next step would be self prompting and Few shot learning modifications on SAM.
+
+Also SAM can only give mask with multiple regions, it doesnt have the ability for distingushing between specific class labels.
+
+* Prerequisites
+- Ref: [[https://github.com/bnsreenu/python_for_microscopists/blob/master/331_fine_tune_SAM_mito.ipynb][notebook]]
+- Check prerequisites from previous section as well.
+#+begin_src sh
+$pip install git+https://github.com/huggingface/transformers
+#+end_src
+* Dataloader
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/dataset.py :mkdirp yes
+import os
+import cv2
+from PIL import Image
+from transformers import SamProcessor
+# import matplotlib.pyplot as plt
+import numpy as np
+from torch.utils.data import Dataset
+import torch
+
+class MediScanSegDataset(Dataset):
+  def __init__(self, img_paths, train_mode=True, model_type="base"):
+    self.img_paths = img_paths
+    self.processor = SamProcessor.from_pretrained("facebook/sam-vit-"+model_type)
+
+    # Define the size of your array
+    array_size = 256
+    # Define the size of your grid
+    grid_size = 10
+    # Generate the grid points
+    x = np.linspace(0, array_size-1, grid_size)
+    y = np.linspace(0, array_size-1, grid_size)
+    # Generate a grid of coordinates
+    xv, yv = np.meshgrid(x, y)
+    # Convert the numpy arrays to lists
+    xv_list = xv.tolist()
+    yv_list = yv.tolist()
+    # Combine the x and y coordinates into a list of list of lists
+    input_points = [[[int(x), int(y)] for x, y in zip(x_row, y_row)] for x_row, y_row in zip(xv_list, yv_list)]
+    self.input_points = torch.tensor(input_points).view(1, 1, grid_size*grid_size, 2)
+    self.train_mode = train_mode
+
+  def __len__(self):
+    return len(self.img_paths)
+
+  def get_bounding_box(self, ground_truth_map):
+    # get bounding box from mask
+    y_indices, x_indices = np.where(ground_truth_map > 0)
+    x_min, x_max = np.min(x_indices), np.max(x_indices)
+    y_min, y_max = np.min(y_indices), np.max(y_indices)
+    # add perturbation to bounding box coordinates
+    H, W = ground_truth_map.shape
+    x_min = max(0, x_min - np.random.randint(0, 20))
+    x_max = min(W, x_max + np.random.randint(0, 20))
+    y_min = max(0, y_min - np.random.randint(0, 20))
+    y_max = min(H, y_max + np.random.randint(0, 20))
+    bbox = [x_min, y_min, x_max, y_max]
+    return bbox
+
+  def __getitem__(self,idx):
+    img_path = self.img_paths[idx]
+    mask_path = img_path.replace("images", "masks")
+
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (256,256), interpolation= cv2.INTER_LINEAR)
+    img = Image.fromarray(img)
+    mask = cv2.imread(mask_path)
+    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    mask = cv2.resize(mask, (256,256), interpolation= cv2.INTER_LINEAR)
+    mask[mask<200]=0.0
+    mask[mask>=200]=1.0
+
+    if self.train_mode:
+        # get bounding box prompt
+        prompt = self.get_bounding_box(mask)
+        # prepare image and prompt for the model
+        inputs = self.processor(img, input_boxes=[[prompt]], return_tensors="pt")
+    else:
+        inputs = self.processor(img, input_points=self.input_points, return_tensors="pt")
+
+    # remove batch dimension which the processor adds by default
+    inputs = {k:v.squeeze(0) for k,v in inputs.items()}
+    # add ground truth segmentation
+    inputs["ground_truth_mask"] = mask
+    inputs["raw_img"] = np.array(img)
+    inputs["id"] = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
+    return inputs
+#+end_src
+* Train script
+** imports
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/train.py :mkdirp yes
+import os
+import random
+import pickle
+import cv2
+import wandb
+from torch.utils.data import DataLoader
+from dataset import MediScanSegDataset
+import torchvision.transforms as T
+import matplotlib.pyplot as plt
+from transformers import SamModel
+from torch.optim import Adam
+import monai
+from tqdm import tqdm
+from statistics import mean
+import torch
+import numpy as np
+from torch.nn.functional import threshold, normalize
+from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score
+os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
+# os.environ["WANDB_MODE"] = "offline"
+#+end_src
+** Create Data splits
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/train.py :mkdirp yes
+# Load image file paths
+img_dir = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
+imgs = {}
+for label in os.listdir(img_dir):
+    imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+
+train = []
+test = []
+val = []
+
+for label in imgs:
+    random.shuffle(imgs[label])
+    train_split = imgs[label][:int(0.8*(len(imgs[label])))]
+    train += train_split
+    tmp = imgs[label][int(0.8*(len(imgs[label]))):]
+    random.shuffle(tmp)
+    tmp_val = tmp[:int(0.5*(len(tmp)))]
+    tmp_test = tmp[int(0.5*(len(tmp))):]
+    val += tmp_val
+    test += tmp_test
+
+random.shuffle(train)
+random.shuffle(val)
+random.shuffle(test)
+with open('train.pkl', 'wb') as f:
+    pickle.dump(train, f)
+with open('val.pkl', 'wb') as f:
+    pickle.dump(val, f)
+with open('test.pkl', 'wb') as f:
+    pickle.dump(test, f)
+
+val = val + test
+test = val
+print(f'Train: {len(train)}; Val: {len(val)}; Test: {len(test)}')
+
+# train = val[:6]
+# val = train
+train_batch_size = 2
+val_batch_size = 1
+train_dataset = MediScanSegDataset(train, train_mode=True)
+train_dataloader = DataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
+val_dataset = MediScanSegDataset(val, train_mode=False)
+val_dataloader = DataLoader(dataset=val_dataset, batch_size=val_batch_size, shuffle=False)
+# test_dataset = SegDataset(test, transform=transform)
+# test_dataloader = DataLoader(dataset=test_dataset, batch_size=test_batch_size, shuffle=False)
+
+# batch = next(iter(train_dataloader))
+# for x in batch.items():
+#    if x[0] == "ground_truth_mask":
+#        print(type(x[1]))
+#        plt.imshow(x[1][0,:,:])
+#        plt.show()
+
+#+end_src
+** Load SAM model
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/train.py :mkdirp yes
+model = SamModel.from_pretrained("facebook/sam-vit-base")
+
+# make sure we only compute gradients for mask decoder
+for name, param in model.named_parameters():
+  if name.startswith("vision_encoder") or name.startswith("prompt_encoder"):
+    param.requires_grad_(False)
+#+end_src
+** Optimizer and Loss
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/train.py :mkdirp yes
+# Initialize the optimizer and the loss function
+optimizer = Adam(model.mask_decoder.parameters(), lr=1e-5, weight_decay=0)
+#Try DiceFocalLoss, FocalLoss, DiceCELoss
+seg_loss = monai.losses.DiceCELoss(sigmoid=True, squared_pred=True, reduction='mean')
+#+end_src
+** Training and Validation
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/train.py :mkdirp yes
+#Training loop
+num_epochs = 50
+
+wandb.login()
+wandb.init(
+    project="sam",
+    config={
+        "lr": 1e-5,
+        "epochs": num_epochs,
+    },)
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
+
+os.makedirs("results", exist_ok=True)
+model.train()
+for epoch in range(num_epochs):
+    print(f'EPOCH: {epoch}')
+    epoch_losses = []
+    for batch in tqdm(train_dataloader):
+      # forward pass
+      outputs = model(pixel_values=batch["pixel_values"].to(device),
+                      input_boxes=batch["input_boxes"].to(device),
+                      multimask_output=False)
+
+      # compute loss
+      predicted_masks = outputs.pred_masks.squeeze(1)
+      ground_truth_masks = batch["ground_truth_mask"].float().to(device)
+      loss = seg_loss(predicted_masks, ground_truth_masks.unsqueeze(1))
+
+      # backward pass (compute gradients of parameters w.r.t. loss)
+      optimizer.zero_grad()
+      loss.backward()
+
+      # optimize
+      optimizer.step()
+      epoch_losses.append(loss.item())
+      wandb.log({"Train Loss batch": loss.item()})
+    print(f'Train loss epoch: {mean(epoch_losses)}')
+    wandb.log({"Train Loss epoch": mean(epoch_losses)})
+
+    epoch_losses = []
+    iou = []
+    acc = []
+    recall = []
+    precision = []
+    f1 = []
+    model.eval()
+    for batch in tqdm(val_dataloader):
+        # forward pass
+        with torch.no_grad():
+            # outputs = model(**batch.to(device), multimask_output=False)
+            outputs = model(pixel_values=batch["pixel_values"].to(device),
+                            input_points=batch["input_points"].to(device),
+                            multimask_output=False)
+        # compute loss
+        predicted_masks = outputs.pred_masks.squeeze(1)
+        ground_truth_masks = batch["ground_truth_mask"].float().to(device)
+        loss = seg_loss(predicted_masks, ground_truth_masks.unsqueeze(1))
+
+        epoch_losses.append(loss.item())
+
+        # apply sigmoid
+        medsam_seg_prob = torch.sigmoid(outputs.pred_masks.squeeze(1))
+        # convert soft mask to hard mask
+        medsam_seg_prob = medsam_seg_prob.cpu().numpy().squeeze()
+        medsam_seg = (medsam_seg_prob > 0.5).astype(np.uint8)
+
+        ground_truth_mask = ground_truth_masks.cpu().numpy().squeeze()
+        img_raw = np.array(batch["raw_img"].squeeze(0))
+
+        intersection = np.logical_and(medsam_seg, ground_truth_mask)
+        union = np.logical_or(medsam_seg, ground_truth_mask)
+        iou_score = np.sum(intersection) / np.sum(union)
+        iou.append(iou_score)
+
+        y_true = ground_truth_mask.flatten()
+        y_pred = medsam_seg.flatten()
+        acc.append(accuracy_score(y_true, y_pred))
+        recall.append(recall_score(y_true, y_pred))
+        precision.append(precision_score(y_true, y_pred))
+        f1.append(f1_score(y_true, y_pred))
+
+        overlay = img_raw.copy()
+        mask = np.zeros(img_raw.shape)
+        medsam_seg = medsam_seg.astype(bool)
+        mask[medsam_seg] = [0,0,1.0]
+        plt.figure()
+        plt.imshow(img_raw)
+        plt.imshow(mask, alpha=0.5)
+        plt.savefig(os.path.join("results", batch["id"][0]+"png"), bbox_inches='tight')
+        plt.close()
+    print(f'Val loss epoch: {mean(epoch_losses)}')
+    wandb.log({"Val loss epoch": mean(epoch_losses)})
+    wandb.log({"iou": mean(iou)})
+    wandb.log({"acc": mean(acc)})
+    wandb.log({"precision": mean(precision)})
+    wandb.log({"recall": mean(recall)})
+    wandb.log({"f1": mean(f1)})
+# Save the model's state dictionary to a file
+torch.save(model.state_dict(), "sam_finetuned.pth")
+#+end_src
+* Testing
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/test.py :mkdirp yes
+from transformers import SamModel, SamConfig, SamProcessor
+import torch
+
+# set the device to cuda if available, otherwise use cpu
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(device)
+     
+# Load the model configuration
+model_config = SamConfig.from_pretrained("facebook/sam-vit-base")
+processor = SamProcessor.from_pretrained("facebook/sam-vit-base")
+
+# Create an instance of the model architecture with the loaded configuration
+model = SamModel(config=model_config)
+#Update the model by loading the weights from saved file.
+model.load_state_dict(torch.load("sam_finetuned.pth"))
+model.to(device)
+#+end_src

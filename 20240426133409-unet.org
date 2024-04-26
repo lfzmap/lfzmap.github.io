@@ -1,0 +1,555 @@
+:PROPERTIES:
+:ID:       8e251593-6a3c-4fb5-bdbb-2e901e184468
+:END:
+#+title: UNet
+
+* Paper
+   http://arxiv.org/abs/1505.04597
+* Introduction
+- A network and training strategy that relies on the strong
+use of data augmentation to use the available annotated samples more
+eﬃciently.
+- We will be trying Multi-Class Semantic segmentation.
+  1. 0 - Background (Black)
+  2. 1 - AC (Red)
+  3. 2 - BPD (Blue)
+  4. 3 - FL (Green)
+- Mask is saved as binary mask. In the data loader we will be replacing 1 with 1,2,3 corresponding to the class.
+- The UNet will output a 4 channel image (Background, AC, BPD and FL)
+  
+* Network Architecture
+
+[[./imgs/unet.png]]
+  
+* Dataset loader
+This script will load the dataset with AC, BPD and FL.
+
+** Necessary imports
+#+begin_src python :tangle ~/projects/unet/dataset.py :mkdirp yes :results output
+import os
+import torch
+from torch.utils.data import Dataset
+from torchvision.transforms import ToTensor
+import matplotlib.pyplot as plt
+from torchvision.io import read_image, ImageReadMode
+import random
+#+end_src
+
+** Custom Dataset Class
+#+begin_src python :tangle ~/projects/unet/dataset.py :mkdirp yes :results output
+class SegDataset(Dataset):
+    def __init__(self, imgs, transform=None):
+        self.imgs = imgs
+        self.transform = transform
+        
+
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.imgs[idx])
+        # print(img_path)
+        image = read_image(img_path,ImageReadMode.GRAY)
+        mask = read_image(img_path.replace("images", "masks"),ImageReadMode.GRAY)
+        if self.transform:
+            image = self.transform(image)
+            mask = self.transform(mask)
+
+        mask[mask>=200] = 255
+        mask[mask<200] = 0
+
+        if "BPD" in img_path:
+            mask[mask==255] = 2.0
+        elif "FL" in img_path:
+            mask[mask==255] = 3.0
+        elif "AC" in img_path:
+            mask[mask==255] = 1.0
+
+        image = image/255.0
+        mask = mask.to(torch.long)
+        return image, mask
+
+if __name__ == "__main__":
+    t = SegDataset("seg")
+#+end_src
+
+* Model Script
+- Taken from https://github.com/milesial/Pytorch-UNet/tree/master/unet
+** UNet Components
+#+begin_src python :tangle ~/projects/unet/unet_parts.py :mkdirp yes :results output
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2"""
+
+    def __init__(self, in_channels, out_channels, mid_channels=None):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+
+class Down(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(in_channels, out_channels)
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+
+class Up(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels, bilinear=True):
+        super().__init__()
+
+        # if bilinear, use the normal convolutions to reduce the number of channels
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+        else:
+            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            self.conv = DoubleConv(in_channels, out_channels)
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # input is CHW
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+                        diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(OutConv, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+#+end_src
+** Assembling main model
+#+begin_src python :tangle ~/projects/unet/model.py :mkdirp yes :results output
+""" Full assembly of the parts to form the complete network """
+from unet_parts import *
+
+class UNet(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear=False):
+        super(UNet, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = (DoubleConv(n_channels, 64))
+        self.down1 = (Down(64, 128))
+        self.down2 = (Down(128, 256))
+        self.down3 = (Down(256, 512))
+        factor = 2 if bilinear else 1
+        self.down4 = (Down(512, 1024 // factor))
+        self.up1 = (Up(1024, 512 // factor, bilinear))
+        self.up2 = (Up(512, 256 // factor, bilinear))
+        self.up3 = (Up(256, 128 // factor, bilinear))
+        self.up4 = (Up(128, 64, bilinear))
+        self.outc = (OutConv(64, n_classes))
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x)
+        return logits
+
+    def use_checkpointing(self):
+        self.inc = torch.utils.checkpoint(self.inc)
+        self.down1 = torch.utils.checkpoint(self.down1)
+        self.down2 = torch.utils.checkpoint(self.down2)
+        self.down3 = torch.utils.checkpoint(self.down3)
+        self.down4 = torch.utils.checkpoint(self.down4)
+        self.up1 = torch.utils.checkpoint(self.up1)
+        self.up2 = torch.utils.checkpoint(self.up2)
+        self.up3 = torch.utils.checkpoint(self.up3)
+        self.up4 = torch.utils.checkpoint(self.up4)
+        self.outc = torch.utils.checkpoint(self.outc)
+
+if __name__ == "__main__":
+  img = torch.rand((1,3,224,224))
+  model = UNet(3,1)
+  o = model(img)
+  print(o.size())
+#+end_src
+
+* Train Script 
+** Necessary imports
+#+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from dataset import SegDataset
+from model import UNet
+import torch.nn.functional as F
+import torchvision.transforms as T
+import segmentation_models_pytorch as smp
+import numpy as np
+from tqdm import tqdm
+import pickle
+import random
+import wandb
+from torchvision.utils import draw_segmentation_masks, save_image
+#+end_src
+
+** Hyperparameters
+#+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
+if not torch.cuda.is_available():
+    raise Exception("CUDA not available!")
+else:
+    print("CUDA available")
+    device = torch.device('cuda')
+
+# Hyper parameters
+train_batch_size = 4
+val_batch_size = 1
+test_batch_size = 1
+num_epochs = 100
+learning_rate=0.00001
+num_classes = 4
+wandb.login()
+wandb.init(
+    project="unet",
+    config={
+        "learning_rate": learning_rate,
+        "epochs": num_epochs,
+    },
+)
+#+end_src
+
+** Create data splits
+#+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
+# Loading data
+img_dir = "seg"
+imgs = {}
+for label in os.listdir(img_dir):
+    imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+
+    train = []
+    test = []
+    val = []
+
+    for label in imgs:
+        random.shuffle(imgs[label])
+        train_split = imgs[label][:int(0.8*(len(imgs[label])))]
+        train += train_split
+        tmp = imgs[label][int(0.8*(len(imgs[label]))):]
+        random.shuffle(tmp)
+        tmp_val = tmp[:int(0.5*(len(tmp)))]
+        tmp_test = tmp[int(0.5*(len(tmp))):]
+        val += tmp_val
+        test += tmp_test
+        
+    random.shuffle(train)
+    random.shuffle(val)
+    random.shuffle(test)
+    with open('train.pkl', 'wb') as f:
+        pickle.dump(train, f)
+    with open('val.pkl', 'wb') as f:
+        pickle.dump(val, f)
+    with open('test.pkl', 'wb') as f:
+        pickle.dump(test, f)
+#+end_src
+
+** Dataloader, Model, Loss etc
+*** Dice Loss
+- loss = 1 - dice coefft
+[[./imgs/dice_loss.png]]
+
+#+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
+# transform
+r = 512
+transform = T.Compose([
+    T.RandomHorizontalFlip(p=0.5),
+    T.RandomVerticalFlip(p=0.5),
+    T.RandomRotation(degrees=(0, 180)),
+    T.Resize((r,r))])
+
+
+print(f'Train: {len(train)}; Val: {len(val)}; Test: {len(test)}')
+
+# train = val[0:10]
+# val = train
+# Setup Dataloader
+train_dataset = SegDataset(train, transform=transform)
+train_dataloader = DataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
+transform = T.Compose([T.Resize((r,r))])
+val_dataset = SegDataset(val, transform=transform)
+val_dataloader = DataLoader(dataset=val_dataset, batch_size=val_batch_size, shuffle=False)
+test_dataset = SegDataset(test, transform=transform)
+test_dataloader = DataLoader(dataset=test_dataset, batch_size=test_batch_size, shuffle=False)
+
+
+# Initialize model
+model = UNet(1,4)
+model = model.to(device=device)
+
+# Optimizer
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+criterion = smp.losses.DiceLoss(mode="multiclass")
+criterion.__name__ = 'Dice_loss'
+#+end_src
+
+** Train & Val Loop
+#+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
+train_loss_per_epoch = []
+train_loss_per_batch = []
+val_loss_per_epoch = []
+
+os.makedirs("checkpoints", exist_ok=True)
+os.makedirs("results", exist_ok=True)
+for epoch in range(num_epochs):
+    print(f'Epoch {epoch}')
+    # train loop
+    train_loss = 0.0
+    c = 0.0
+    for batch_idx, (img,mask) in enumerate(tqdm(train_dataloader)):
+        img = img.to(device=device)
+        mask = mask.to(device=device)
+        model.train()
+        pred = model(img)
+
+        loss = criterion(pred, mask)
+        train_loss_per_batch.append(loss.item())
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        train_loss+=loss.item()
+        wandb.log({"Train Loss Batch": loss.item()})
+        c += 1.0
+
+    train_loss /= c
+    wandb.log({"Train Loss Epoch": train_loss})
+    train_loss_per_epoch.append(train_loss)
+ 
+    # val loop
+    val_loss = 0.0
+    iou_score = 0.0
+    f1_score = 0.0
+    f2_score = 0.0
+    accuracy = 0.0
+    recall = 0.0
+    c = 0.0
+    trans = T.Lambda(lambda x: x.repeat(3, 1, 1) if x.size(0)==1 else x)
+    for batch_idx, (img,mask) in enumerate(tqdm(val_dataloader)):
+        img = img.to(device=device)
+        mask = mask.to(device=device)
+        model.eval()
+        with torch.no_grad():
+            pred = model(img)
+            loss = criterion(pred, mask)
+            val_loss+=loss.item()
+
+            wandb.log({"Val Loss Batch": loss.item()})
+            pred2 = torch.argmax(pred, axis=1, keepdims=True)
+            tp, fp, fn, tn = smp.metrics.get_stats(pred2, mask, mode='multiclass', num_classes=4)
+            iou_score += smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+            f1_score += smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+            f2_score += smp.metrics.fbeta_score(tp, fp, fn, tn, beta=2, reduction="micro")
+            accuracy += smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
+            recall += smp.metrics.recall(tp, fp, fn, tn, reduction="micro-imagewise")
+
+            pred = pred.cpu().detach()
+            mask = mask.cpu().detach()
+            img = img.cpu().detach()
+            for i,out in enumerate(pred):
+                out = torch.nn.functional.softmax(pred[i], dim=1)
+                out_max = out.argmax(0) == torch.arange(num_classes)[:, None, None]
+                img_raw = (img[i]*255.0).to(torch.uint8)
+                img_raw = trans(img_raw)
+                final = draw_segmentation_masks(img_raw, masks=out_max, alpha=0.5, colors=["black","red","blue","green"])
+                final = final/255.0
+                final = final.float()
+                save_image(final, os.path.join("results", str(batch_idx+1)+str(i+1)+".jpg"))
+            c += 1.0
+        
+    val_loss /= c
+    iou_score /= c
+    f1_score /= c
+    f2_score /= c
+    accuracy /= c
+    recall /= c
+    wandb.log({"Val Loss Epoch": val_loss})
+    wandb.log({"IoU": iou_score})
+    wandb.log({"F1": f1_score})
+    wandb.log({"F2": f2_score})
+    wandb.log({"Accuracy": accuracy})
+    wandb.log({"Recall": recall})
+
+    val_loss_per_epoch.append(val_loss)
+    with open('train_loss_batch.pkl', 'wb') as f:
+        pickle.dump(train_loss_per_batch, f)
+    with open('train_loss_epoch.pkl', 'wb') as f:
+        pickle.dump(train_loss_per_epoch, f)
+    with open('val_loss_epoch.pkl', 'wb') as f:
+        pickle.dump(val_loss_per_epoch, f)
+
+    # save model
+    checkpoint = {
+        "state_dict": model.state_dict(),
+        "optimizer":optimizer.state_dict(),
+        "epoch": epoch+1,
+        "val_loss": val_loss}
+    ckpt_path = os.path.join("checkpoints",f'ckpt_epoch:{epoch+1}_val_loss:{val_loss:.4f}.pth.tar')
+    if (epoch+1)%10==0:
+        torch.save(checkpoint, ckpt_path)
+
+
+# After
+torch.cuda.empty_cache()
+#+end_src
+
+* Testing
+#+begin_src python :tangle ~/projects/unet/test.py :mkdirp yes
+import os
+import torch
+from tqdm import tqdm
+import pickle
+from model import UNet
+import torchvision.transforms as T
+from torch.utils.data import DataLoader
+from dataset import SegDataset
+import segmentation_models_pytorch as smp
+from torchvision.utils import draw_segmentation_masks, save_image
+
+if not torch.cuda.is_available():
+    raise Exception("CUDA not available!")
+else:
+    print("CUDA available")
+    device = torch.device('cuda')
+
+# setup model
+ckpt_path = "checkpoints/ckpt_epoch:50_val_loss:0.1194.pth.tar"
+model = UNet(1,4)
+model = model.to(device=device)
+ckpt = torch.load(ckpt_path)
+model.load_state_dict(ckpt["state_dict"])
+
+criterion = smp.losses.DiceLoss(mode="multiclass")
+criterion.__name__ = 'Dice_loss'
+
+# load test split
+with open("test.pkl","rb") as f:
+   test = pickle.load(f)
+r=512
+transform = T.Compose([T.Resize((r,r))])
+test_dataset = SegDataset(test, transform=transform)
+test_dataloader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=False)
+os.makedirs("test_results", exist_ok=True)
+
+num_classes = 4
+test_loss = 0.0
+iou_score = 0.0
+f1_score = 0.0
+f2_score = 0.0
+accuracy = 0.0
+recall = 0.0
+c = 0.0
+trans = T.Lambda(lambda x: x.repeat(3, 1, 1) if x.size(0)==1 else x)
+for batch_idx, (img,mask) in enumerate(tqdm(test_dataloader)):
+    img = img.to(device=device)
+    mask = mask.to(device=device)
+    model.eval()
+    with torch.no_grad():
+        pred = model(img)
+        loss = criterion(pred, mask)
+        test_loss+=loss.item()
+
+        pred2 = torch.argmax(pred, axis=1, keepdims=True)
+        tp, fp, fn, tn = smp.metrics.get_stats(pred2, mask, mode='multiclass', num_classes=4)
+        iou_score += smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+        f1_score += smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+        f2_score += smp.metrics.fbeta_score(tp, fp, fn, tn, beta=2, reduction="micro")
+        accuracy += smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
+        recall += smp.metrics.recall(tp, fp, fn, tn, reduction="micro-imagewise")
+
+        pred = pred.cpu().detach()
+        mask = mask.cpu().detach()
+        img = img.cpu().detach()
+        for i,out in enumerate(pred):
+            out = torch.nn.functional.softmax(pred[i], dim=1)
+            out_max = out.argmax(0) == torch.arange(num_classes)[:, None, None]
+            img_raw = (img[i]*255.0).to(torch.uint8)
+            img_raw = trans(img_raw)
+            final = draw_segmentation_masks(img_raw, masks=out_max, alpha=0.5, colors=["black","red","blue","green"])
+            final = final/255.0
+            final = final.float()
+            save_image(final, os.path.join("test_results", str(batch_idx+1)+str(i+1)+".jpg"))
+        c += 1.0
+
+test_loss /= c
+iou_score /= c
+f1_score /= c
+f2_score /= c
+accuracy /= c
+recall /= c
+print(test_loss,iou_score,f1_score, f2_score, accuracy,recall)
+#+end_src
+
+** Results
+1. Wandb run: https://wandb.ai/lfz/unet?nw=nwuserlfz
+   - Batch Size = 4
+   - LR = 0.001
+   - Loss = Dice Loss
+   - Epochs = 50
+   - Optim = Adam
+
+2. Wandb run: https://wandb.ai/lfz/unet/runs/uqva12sm?nw=nwuserlfz
+   - Batch Size = 4
+   - LR = 0.00001
+   - Loss = Dice Loss
+   - Epochs = 100
+   - Optim = Adam
+
+     #+ATTR_LATEX: :environment longtable :align l|lp{3cm}r|l
+     | Dice Loss | 0.088 |
+     | IoU       |  0.89 |
+     | F1        |  0.94 |
+     | Acc       | 0.97  |
+     | Recall    | 0.94  |
+
+     [[./imgs/fl.png]]
+     
+     [[./imgs/ac.png]]
+
+     [[./imgs/bpd.png]]
+

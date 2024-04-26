@@ -1,0 +1,9 @@
+:PROPERTIES:
+:ID:       a71cdcb6-953f-45cf-8bcd-3a1b2139c76f
+:END:
+#+title: Prog
+
+Notes regarding the programming langauges I am learning.
+
+* [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]] 
+* [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   

@@ -1,0 +1,8 @@
+:PROPERTIES:
+:ID:       59a45f0f-243e-41f4-8621-400a8bc50b5f
+:END:
+#+title: Segmentation
+
+* [[id:8e251593-6a3c-4fb5-bdbb-2e901e184468][UNet]] 
+
+* [[id:c2ef2104-39a5-4e0b-a07a-425de90b641f][SAM]]  

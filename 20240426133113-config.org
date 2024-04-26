@@ -1,0 +1,6 @@
+:PROPERTIES:
+:ID:       86f3ba64-8b1f-4d5f-832f-fef32a27b511
+:END:
+#+title: Config
+
+* [[id:34ced04c-fc88-44fb-a474-c091fde67a80][Emacs]] 

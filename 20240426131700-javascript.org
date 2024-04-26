@@ -1,0 +1,143 @@
+:PROPERTIES:
+:ID:       67355155-cdf9-4f54-8322-70048d0bde8b
+:END:
+#+title: JavaScript
+
+* Introduction
+- weakly typed
+- object oriented
+- versatile : runs in browser, pc or server; variety of tasks.
+  
+* Variables
+** var (outdated)
+#+begin_src js :results output
+var name = "lfz";
+var age = 12;
+var isThere = true;
+console.log(name, age, isThere);
+
+#+end_src
+** let           
+#+begin_src js :results output
+  let name = "lfz";
+  let age = 12;
+  let isThere = true;
+  console.log(name, age, isThere);
+  #+end_src
+  
+* Constants
+#+begin_src js :results output
+  const v1 = true;
+#+end_src
+
+* Function
+** Standard
+#+begin_src js :results output
+function testf(var1){
+     return ('testing : '+var1);
+  }
+console.log(testf(12));
+
+#+end_src
+** Arrow Function
+*** relation to 'this'
+- https://academind.com/tutorials/this-keyword-function-references
+
+#+begin_src js :results output
+const f1 = function(a,b){
+    return (a+b);
+}
+const f2 = (a,b) => {
+    return (a+b);
+}
+
+const f3 = (a,b) => a+b;
+const f4 = a => a+1;
+const f5 = () => 3+1;
+
+
+console.log(f2(1,2), f3(1,5), f5());
+
+#+end_src
+
+* DataStructures
+** Object
+
+#+begin_src js :results output
+const o1 = {
+name: 'lfz',
+age: 26,
+greet() {console.log('Hi I am ' + this.name);}
+};
+
+o1.greet();
+
+#+end_src
+** Array
+*** Map : transform elements of an array
+#+begin_src js :results output
+const arr = [1,"er", true];
+console.log(arr);
+
+console.log(arr.map(x => {'mapped '+x}));
+#+end_src
+*** arr is reference hence we can manipulate
+
+#+RESULTS:
+: [ 1, 'er', true ]
+: [ undefined, undefined, undefined ]
+
+* For Loop
+#+begin_src js :results output
+const arr = [1,"er", true];
+for (let i of arr){
+   console.log(i);
+}
+#+end_src
+#+RESULTS:
+: 1
+: er
+: true
+
+* Spread operator
+** ... : For copying arr elements
+#+begin_src js :results output
+const arr = [1,"er", true];
+const arr2 = [...arr];
+console.log(arr2);
+
+#+end_src
+* Rest operator
+** variable number of arguments
+#+begin_src js :results output
+const f1 = (...args)=>{
+   return args;
+};
+
+console.log(f1(1,2,3,4));
+
+
+#+end_src
+
+* Destructuring
+#+begin_src js :results output
+const o1 = {
+name: 'lfz',
+age: 26,
+greet() {console.log('Hi I am ' + this.name);}
+};
+const { name,age } = o1;
+console.log(name,age); 
+
+const arr = [1,"er", true];
+const [a1,a2,a3] = arr;
+console.log(a1,a2,a3); 
+#+end_src
+
+
+#+RESULTS:
+: lfz 26
+: 1 er true
+
+* Async
+

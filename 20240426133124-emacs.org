@@ -1,0 +1,534 @@
+:Properties:
+:ID:       34ced04c-fc88-44fb-a474-c091fde67a80
+:END:
+#+title: Emacs
+
+
+* Early-init file
+
+#+begin_src emacs-lisp :tangle "~/.config/emacs/early-init.el" :makedirp yes
+;;prevent package.el loading packages prior to their init-file loading.
+(setq package-enable-at-startup nil)
+#+end_src
+
+* UI Improvements
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+    ;; Flash when the bell rings
+    (setq visible-bell t)
+    ;; Turn off some unneeded UI elements
+    (menu-bar-mode -1)
+    (tool-bar-mode -1)
+    (scroll-bar-mode -1)
+  ;; Ask for textual confirmation instead of GUI
+    (setq use-file-dialog nil)
+  #+end_src
+* Recentf mode 
+** C-x f : recent files
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  (recentf-mode 1)
+#+end_src
+
+* Line Number
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; Display line numbers in every buffer
+(global-display-line-numbers-mode 1)
+;; Disable line numbers for some modes
+(dolist (mode '(org-mode-hook
+                term-mode-hook
+                shell-mode-hook
+                eshell-mode-hook))
+  (add-hook mode (lambda () (display-line-numbers-mode 0))))
+#+end_src
+
+* Package Manager-straight.el
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  ;; package manager
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name
+        "straight/repos/straight.el/bootstrap.el"
+        (or (bound-and-true-p straight-base-dir)
+            user-emacs-directory)))
+      (bootstrap-version 7))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+#+end_src
+
+* Tidier package configurations using use-package
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; tidier package configuration
+(straight-use-package 'use-package)
+;; make straight.el as use-package's default package manger
+(setq straight-use-package-by-default t)
+(setq use-package-always-defer t)
+#+end_src
+
+* Garbage collector
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package gcmh
+  :demand
+  :config
+  (gcmh-mode 1))
+#+end_src
+
+* Emacs Specific Settings
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package emacs
+  :init
+ (global-set-key (kbd "<escape>") 'keyboard-escape-quit) ;; Make ESC quit prompts
+ (defun display-startup-echo-area-message ()
+    (message "Well Hello there...!!"))
+  (defalias 'yes-or-no-p 'y-or-n-p) ;; can type y instead of yes
+  ;; enable utf-8
+  (set-charset-priority 'unicode)
+  (setq locale-coding-system 'utf-8
+        coding-system-for-read 'utf-8
+        coding-system-for-write 'utf-8)
+  (set-terminal-coding-system 'utf-8)
+  (set-keyboard-coding-system 'utf-8)
+  (set-selection-coding-system 'utf-8)
+  (prefer-coding-system 'utf-8)
+  (setq default-process-coding-system '(utf-8-unix . utf-8-unix))
+  ;;Use spaces, but configure tab-width for modes that use tabs
+  (setq-default indent-tabs-mode nil)
+  (setq-default tab-width 2))
+#+end_src
+
+* Evil Mode
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+    ;; Vim keybindings: All hail the Evil lord!!
+    (use-package evil
+      :init
+     (setq evil-want-keybinding nil) ;; avoid conflict with evi-collection
+     (setq evil-want-C-u-scroll t)
+      :demand ; No lazy loading
+      :config
+      (evil-mode 1))
+
+#+end_src
+
+* Set Theme
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; load theme
+(use-package doom-themes
+  :demand
+  :config
+  (load-theme 'doom-acario-dark t))
+#+end_src
+
+* Better Modeline
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package doom-modeline
+  :ensure t
+  :init (doom-modeline-mode 1))
+(use-package nerd-icons)
+
+#+end_src
+
+* show available commands after a keybinding
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package which-key
+  :demand
+  :init
+  (setq which-key-idle-delay 0.5) ; Open after .5s instead of 1s
+  :config
+  (which-key-mode))
+
+#+end_src
+
+* Custom keybindings
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  (use-package general
+    :demand
+    :config
+    (general-evil-setup)
+
+    (general-create-definer leader-keys
+      :states '(normal insert visual emacs)
+      :keymaps 'override
+      :prefix "SPC"
+      :global-prefix "C-SPC")
+
+    (leader-keys
+      "x" '(execute-extended-command :which-key "execute command")
+      "r" '(restart-emacs :whick-key "restart emacs")
+      "f" '(recentf :whick-key "recent files")
+      "i" '((lambda () (interactive) (find-file user-init-file)) :which-key "open init file")
+      ))
+
+  ;; transient key bindings(repetitive)
+  (use-package hydra)
+  (defhydra hydra-text-scale (:timeout 4)
+    "scale text"
+    ("j" text-scale-increase "in")
+    ("k" text-scale-decrease "out")
+    ("f" nil "finished" :exit t))
+  (defhydra switch-buffer (:timeout 4)
+    "switch buffers"
+    ("k" switch-to-next-buffer "next")
+    ("j" switch-to-prev-buffer "prev")
+    ("d" (kill-buffer(current-buffer)) "kill")
+    ("f" nil "finished" :exit t))
+
+  (leader-keys
+    "s" '(hydra-text-scale/body :which-key "scale text")
+    "b" '(switch-buffer/body :which-key "switch buffer")
+  )
+
+  ;; ignore some buffers will switching buffers
+  (defcustom aj8/buffer-skip-regexp
+    (rx bos (or (or "*GNU Emacs*" "*straight-process*" "*Backtrace*" "*Compile-Log*" "*Completions*"
+                    "*Messages*" "*package*" "*Warnings*"
+                    "*Async-native-compile-log*" "*scratch*")
+                (seq "magit-diff" (zero-or-more anything))
+                (seq "magit-process" (zero-or-more anything))
+                (seq "magit-revision" (zero-or-more anything))
+                (seq "magit-stash" (zero-or-more anything)))
+                eos)
+    "Regular expression matching buffers ignored by `next-buffer' and
+  `previous-buffer'."
+    :type 'regexp)
+
+  (defun aj8/buffer-skip-p (window buffer bury-or-kill)
+    "Return t if BUFFER name matches `aj8/buffer-skip-regexp'."
+    (string-match-p aj8/buffer-skip-regexp (buffer-name buffer)))
+
+  (setq switch-to-prev-buffer-skip 'aj8/buffer-skip-p)
+  (setq switch-to-next-buffer-skip 'aj8/buffer-skip-p)
+  
+  #+end_src
+  
+* comment lines - highlight and then gc
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  (use-package evil-nerd-commenter
+    :general
+    (general-nvmap
+      "gc" 'evilnc-comment-operator))
+#+end_src
+
+* Project manager
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package projectile
+  :diminish projectile-mode
+  :config (projectile-mode)
+  ;; :custom ((projectile-completion-system 'ivy))
+  :bind-keymap
+  ("C-c p" . projectile-command-map)
+  :init
+  (setq projectile-project-search-path '("~/projects/"))
+  :general
+  (leader-keys
+    :states 'normal
+    "SPC" '(projectile-find-file :which-key "find file")
+    ;; Projects
+    "p" '(:ignore t :which-key "projects")
+    "p <escape>" '(keyboard-escape-quit :which-key t)
+    "p p" '(projectile-switch-project :which-key "switch project")
+    "p a" '(projectile-add-known-project :which-key "add project")
+    "p r" '(projectile-remove-known-project :which-key "remove project")))
+
+#+end_src
+
+* Completion
+** mini-buffer
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package vertico
+  :ensure t
+  :bind (:map vertico-map
+         ("C-j" . vertico-next)
+         ("C-k" . vertico-previous)
+         ("C-f" . vertico-exit)
+         :map minibuffer-local-map
+         ("M-h" . backward-kill-word))
+  :custom
+  (vertico-cycle t)
+  :init
+  (vertico-mode))
+
+(use-package savehist
+  :init
+  (savehist-mode))
+
+(use-package marginalia
+  :after vertico
+  :ensure t
+  :custom
+  (marginalia-annotators '(marginalia-annotators-heavy marginalia-annotators-light nil))
+  :init
+  (marginalia-mode))
+#+end_src
+
+** In-Buffer
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  ;; (use-package corfu
+  ;;   :ensure t
+  ;;   ;; Optional customizations
+  ;;   :custom
+  ;;   (corfu-cycle t)                 ; Allows cycling through candidates
+  ;;   (corfu-auto t)                  ; Enable auto completion
+  ;;   (corfu-auto-prefix 2)
+  ;;   (corfu-auto-delay 0.8)
+  ;;   (corfu-popupinfo-delay '(0.5 . 0.2))
+  ;;   (corfu-preview-current 'insert) ; insert previewed candidate
+  ;;   (corfu-preselect 'prompt)
+  ;;   (corfu-on-exact-match nil)      ; Don't auto expand tempel snippets
+  ;;   ;; Optionally use TAB for cycling, default is `corfu-complete'.
+  ;;   :bind (:map corfu-map
+  ;;               ("M-SPC"      . corfu-insert-separator)
+  ;;               ("TAB"        . corfu-next)
+  ;;               ([tab]        . corfu-next)
+  ;;               ("S-TAB"      . corfu-previous)
+  ;;               ([backtab]    . corfu-previous)
+  ;;               ("S-<return>" . corfu-insert)
+  ;;               ("RET"        . nil))
+
+  ;;   :init
+  ;;   (global-corfu-mode)
+  ;;   (corfu-history-mode)
+  ;;   (corfu-popupinfo-mode) ; Popup completion info
+  ;;   :config
+  ;;   (add-hook 'eshell-mode-hook
+  ;;             (lambda () (setq-local corfu-quit-at-boundary t
+  ;;                                    corfu-quit-no-match t
+  ;;                                    corfu-auto nil)
+  ;;               (corfu-mode))
+  ;;             nil
+  ;;             t))
+  (use-package corfu
+    :custom
+    (corfu-cycle t)                 ; Allows cycling through candidates
+    (corfu-auto t)                  ; Enable auto completion
+    (corfu-auto-prefix 2)
+    (corfu-auto-delay 0.8)
+    (corfu-popupinfo-delay '(0.5 . 0.2))
+    :general
+    (:keymaps 'corfu-map
+     :states 'insert
+     "C-j" #'corfu-next
+     "C-k" #'corfu-previous
+     "<escape>" #'corfu-quit
+     "<return>" #'corfu-insert
+     "M-d" #'corfu-show-documentation
+     "M-l" #'corfu-show-location)
+    :init
+    (global-corfu-mode))
+#+end_src
+
+* Magit for git
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package magit
+  :general
+  (leader-keys
+    "g" '(:ignore t :which-key "git")
+    "g <escape>" '(keyboard-escape-quit :which-key t)
+    "g g" '(magit-status :which-key "status")
+    "g l" '(magit-log :which-key "log"))
+  (general-nmap
+    "<escape>" #'transient-quit-one))
+
+;; magit+evil
+(use-package evil-collection
+  :after evil
+  :demand
+  :config
+  (evil-collection-init))
+#+end_src
+
+* Terminal
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package vterm)
+;; toggle between active buffer and a vterm buffer
+(use-package vterm-toggle
+  :general
+  (leader-keys
+    "t" '(vterm-toggle :which-key "terminal")))
+#+end_src
+
+* colored paranthesis
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package rainbow-delimiters
+  :hook (prog-mode . rainbow-delimiters-mode))
+
+#+end_src
+
+* Org-mode
+** Bindings
+*** Tangle : C-c C-v t
+*** Split code block : C-c C-v C-d
+*** Evaluate babel code block : C-c C-c
+*** Edit code in a special buffer : C-c '
+*** Show image inline: C-c C-x C-v
+** Basic setup
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package org
+  :straight (:type built-in)
+  :config
+  (setq org-ellipsis " ▼")
+  (setq org-startup-with-inline-images t)
+  (setq org-format-latex-options (plist-put org-format-latex-options :scale 2.0))
+  (setq org-hide-emphasis-markers t)
+  (setq org-fontify-done-headline t)
+  (setq org-startup-folded t)
+  (setq org-src-fontify-natively t)
+  (setq org-latex-listings t)
+  :general
+  (leader-keys
+  "o" '(:ignore t :which-key "org")
+  "o <escape>" '(keyboard-escape-quit :which-key t)
+  "o t" '(org-babel-tangle :which-key "tangle")
+  "o r" '(org-ctrl-c-ctrl-c :which-key "run code block")
+  "o p" '(org-latex-export-to-pdf :which-key "export to pdf")
+  "o e" '(org-edit-special :which-key "edit code")))
+#+end_src
+** Change Bullet Designs
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+  (use-package org-bullets
+    :after org
+    :hook (org-mode . org-bullets-mode)
+    :custom
+    (org-bullets-bullet-list '("⬢" "◆" "▲" "■" "◉" "○" "●" "○" "●" "○" "●")))
+ #+end_src
+** Org Babel 
+ #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+      (setq org-confirm-babel-evaluate nil)
+      (setq org-src-preserve-indentation t)
+      (setq org-edit-src-content-indentation 4)
+
+      (org-babel-do-load-languages
+      'org-babel-load-languages
+      '((js . t)
+      (python . t)))
+
+#+end_src
+
+** Export to latex
+*** Syntax Highlighting
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(setq org-latex-listings 'minted
+      org-latex-packages-alist '(("" "minted"))
+      org-latex-pdf-process
+      '("pdflatex -shell-escape -interaction nonstopmode -output-directory %o %f"
+        "pdflatex -shell-escape -interaction nonstopmode -output-directory %o %f"))
+
+#+end_src
+** Hyperlink
+- image path inside [[]]
+*** Open link : C-c C-o
+
+** Website
+- https://systemcrafters.net/publishing-websites-with-org-mode/building-the-site/
+*** Previewing Site
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package simple-httpd
+  :ensure t)
+#+end_src
+- ./build.sh : create html pages into publish folder
+- M-x httpd-serve-directory : preview website on port 8080
+
+* Python
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(setq python-shell-completion-native-enable nil)
+(setq org-babel-python-command "/usr/bin/python3")
+(setq python-shell-interpreter "/usr/bin/python3")
+#+end_src
+
+* JavaScript
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; change default js-mode
+(add-to-list 'auto-mode-alist '("\\.js\\'" . js2-mode))
+(setq js-indent-level 2)
+#+end_src
+* Syntax Highlighting
+** Treesitter
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package tree-sitter
+  :hook
+  ((css-mode
+    go-mode
+    js2-mode
+    json-mode
+    lua-mode
+    nix-mode
+    php-mode
+    php-mode
+    python-mode
+    ruby-mode
+    rust-mode
+    terraform-mode
+    typescript-mode
+    yaml-mode) . siren-tree-sitter-mode-enable)
+
+  :preface
+  (defun siren-tree-sitter-mode-enable ()
+    (tree-sitter-mode t)))
+
+(use-package tree-sitter-langs
+  :hook
+  (tree-sitter-after-on . tree-sitter-hl-mode))
+
+#+end_src
+** Remap major modes to ts major mode
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(setq major-mode-remap-alist
+ '((yaml-mode . yaml-ts-mode)
+   (bash-mode . bash-ts-mode)
+   (js2-mode . js-ts-mode)
+   (typescript-mode . typescript-ts-mode)
+   (json-mode . json-ts-mode)
+   (css-mode . css-ts-mode)
+   (python-mode . python-ts-mode)))
+#+end_src
+** Download language grammars
+#+begin_src sh
+git clone https://github.com/casouri/tree-sitter-module.git
+cd tree-sitter-module
+./batch.sh
+mv dist/* ~/.config/emacs/tree-sitter
+#+end_src
+
+* Org-Roam
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package org-roam
+  :ensure t
+  :init
+  (setq org-roam-v2-ack t)
+  :custom
+  (org-roam-directory "~/projects/lfzmap")
+  (org-roam-db-location "~/projects/lfzmap/org-roam.db")
+  (org-roam-completion-everywhere t)
+  :general
+  (leader-keys
+  "n" '(:ignore t :which-key "notes")
+  "n <escape>" '(keyboard-escape-quit :which-key t)
+  "n f" '(org-roam-node-find :which-key "find note")
+  "n b" '(org-roam-buffer-toggle :which-key "roam buffer")
+  "n i" '(org-roam-node-insert :which-key "insert"))
+  :config
+  (org-roam-setup))
+(use-package org-roam-ui
+  :straight
+    (:host github :repo "org-roam/org-roam-ui" :branch "main" :files ("*.el" "out"))
+    :after org-roam
+;;         normally we'd recommend hooking orui after org-roam, but since org-roam does not have
+;;         a hookable mode anymore, you're advised to pick something yourself
+;;         if you don't care about startup time, use
+;;  :hook (after-init . org-roam-ui-mode)
+    :config
+    (setq org-roam-ui-sync-theme t
+          org-roam-ui-follow t
+          org-roam-ui-update-on-save t
+          org-roam-ui-open-on-start t))
+#+end_src
+* elisp block for checking
+#+begin_src emacs-lisp :result outputs
+;; (treesit-available-p)
+(org-roam-sqlite-available-p)
+;; (treesit-language-available-p 'javascript)
+#+end_src
+

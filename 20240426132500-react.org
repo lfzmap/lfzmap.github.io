@@ -1,0 +1,158 @@
+:PROPERTIES:
+:ID:       595bdfab-4ec2-439e-be2d-f73e454157c9
+:END:
+#+title: React
+
+* Introduction
+- A Javascript library for creating user interface.
+- Actually it is an ecosystem with third party packages, so we can say it is a 'pseudo-framework'.
+- Browserside Javascript - no interaction with server.
+- Declarative approach - define result only, not the state.
+- Normal Js use Imperative approach ie steps to attain the result are also defined.
+
+* Start Project
+- https://github.com/facebook/create-react-app
+
+#+begin_src sh
+npx create-react-app my-app
+cd my-app
+npm start
+#+end_src
+
+* JSX
+- The html code seen in js scripts are not actual html.
+- This is a html like syntax that react compile back to reactjs code(react.createElement(..)), which then in turn create html code.
+
+* Componet
+1. A javascript function returning jsx code or react.createElement.
+   #+begin_src js
+const app = () =>{
+  return <h1>"hello!"</h1>;
+}
+   #+end_src
+   
+2. A javascript class that has render methods.
+   #+begin_src js
+class App extends React.Component{
+  render(){
+    return <h1>"Sd"</h1>;
+  }
+}
+   #+end_src
+- Modern react use functional components only.
+
+* Props
+Data passed to a component.
+Let componentA.js inside App.js component. Then a data1 & data2 from App can be passed into componentA
+as props var1 & var2.
+
+We define componentA with props, it bundles all props into a single object.
+Access individual pops using dot operator, ie props.var1, props.var2 etc.
+
+#+begin_src js
+const componentA = props => {
+props.var1
+props.var2
+}
+#+end_src
+in App we pass it as follows
+#+begin_src js
+
+let data1 = 1;
+let data2 = 12;
+<ComponentA var1={data1} var2={prop2}/>
+#+end_src
+
+example:
+#+begin_src js
+// in app js
+import component1 from './component1.js'
+let var1  = [{i: '1', text:"sgg"}, {i: '2', text: "ad"}];
+
+return <component1 prop1={var1}/>
+
+// in component js
+const component1 = props =>{
+ return <ul className='test-list'>
+
+props.prop1.map((elem)=>{return <li key={elem.id}>{elem.text}</li>})
+
+</ul>;   
+}
+#+end_src
+* Handling Events
+#+begin_src js
+const componentA {
+
+const f1 = event {
+
+//do something
+}
+
+return <jsx onEvent={f1} />
+
+}
+#+end_src
+
+When even onEvent trigger f1 will happen.
+here essentially onEvent is a prop
+* Parent-Child Communication
+let componentA and componentB lives in App.js component.
+data1 from App to componentA is done through props => parent to child.
+
+now if we want data from componentB to be in App => child to parent; then we pass a
+function f2 as prop to B from App
+
+App.js
+#+begin_src js
+
+const App {
+
+const f2 = (va2) => {
+
+// do something
+
+}
+
+<ComponentB prop1={f2}/>
+}
+
+#+end_src
+
+then inside componentB we call props.f1();
+In f2 we can use var2 from componentB to modify var1 in App.js.
+* Managing State
+Now evenif var1 get modified any jsx using var1 in App will not get re-rendered.
+We need to explicity tell react to handle this using a concept called state.
+
+ie we need redefine var1 as a state, thus react will be tracking it. for that purpose we use
+useState from React which is a react hook.
+
+useState returns [current_state, f3], f3 function is for rerendering.
+
+in App,js
+#+begin_src js
+
+const [var1, setVar1] = useState(initial data);
+
+const f2 = var2 =>{
+
+setVar1(var1.concat(var2));
+
+}
+#+end_src
+concat because it returns a brand new array instead just modifying var1.
+if f2 called many times there is chance of delay in updating f2, so a better way is to use a function
+dependant on previous data instead.
+
+in App,js
+#+begin_src js
+
+const [var1, setVar1] = useState(initial data);
+
+const f2 = var2 =>{
+
+setVar1(prevVar1 => {prevVar1.concat(var2)});
+
+}
+#+end_src

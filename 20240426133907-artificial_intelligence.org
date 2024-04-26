@@ -1,0 +1,7 @@
+:PROPERTIES:
+:ID:       e5b58c80-3a64-40c2-b555-5555f69039a2
+:END:
+#+title: Artificial Intelligence
+
+* [[id:0f8b7d24-d097-4785-89c7-ed550415f0a7][Transformer]] 
+* [[id:59a45f0f-243e-41f4-8621-400a8bc50b5f][Segmentation]] 
