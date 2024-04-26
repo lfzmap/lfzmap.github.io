@@ -2,6 +2,7 @@
 :ID:       55f39ffa-d905-493d-8b4a-58c51d1a860b
 :END:
 #+title: Supervised learning
+#+STARTUP: latexpreview
 #+LATEX_CLASS: article
 #+LATEX_CLASS_OPTIONS: [fleqno]
 
@@ -10,5 +11,12 @@ possible relationships between them while the parameters $\phi$ of model specify
 Hence we can represent a supervised learning model as follows:
 
 \begin{equation}
-\overrightarrow{y} = f[\phi,\overrightarrow{x}]
+\overrightarrow{y} = f [\phi,\overrightarrow{x}]
+\end{equation}
+
+Training or learning aims to find the right $\phi$. Specifically it runs on a /training dataset/, $I = \{x_i,y_i\}$, computes a *Loss Function* $L [\phi]$ and
+tries to find a $\phi$ such that the loss is minimum as possible.
+
+\begin{equation}
+\hat{\phi} = \mathop{\arg \min}\limits_{\phi}[L[\phi]]
 \end{equation}
