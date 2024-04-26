@@ -19,7 +19,7 @@ eﬃciently.
   
 * Network Architecture
 
-[[./imgs/unet.png]]
+[[./img/unet.png]]
   
 * Dataset loader
 This script will load the dataset with AC, BPD and FL.
