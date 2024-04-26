@@ -290,10 +290,11 @@ for label in os.listdir(img_dir):
 #+end_src
 
 ** Dataloader, Model, Loss etc
-*** Dice Loss
-- loss = 1 - dice coefft
-[[./imgs/dice_loss.png]]
 
+*Dice Loss*
+- loss = 1 - dice coefft
+
+   [[./img/dice_loss.png]]
 #+begin_src python :tangle ~/projects/unet/train.py :mkdirp yes :results output
 # transform
 r = 512
@@ -526,14 +527,6 @@ print(test_loss,iou_score,f1_score, f2_score, accuracy,recall)
 #+end_src
 
 ** Results
-1. Wandb run: https://wandb.ai/lfz/unet?nw=nwuserlfz
-   - Batch Size = 4
-   - LR = 0.001
-   - Loss = Dice Loss
-   - Epochs = 50
-   - Optim = Adam
-
-2. Wandb run: https://wandb.ai/lfz/unet/runs/uqva12sm?nw=nwuserlfz
    - Batch Size = 4
    - LR = 0.00001
    - Loss = Dice Loss
@@ -547,9 +540,9 @@ print(test_loss,iou_score,f1_score, f2_score, accuracy,recall)
      | Acc       | 0.97  |
      | Recall    | 0.94  |
 
-     [[./imgs/fl.png]]
+     [[./img/fl.png]]
      
-     [[./imgs/ac.png]]
+     [[./img/ac.png]]
 
-     [[./imgs/bpd.png]]
+     [[./img/bpd.png]]
 

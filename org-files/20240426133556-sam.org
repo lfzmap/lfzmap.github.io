@@ -171,10 +171,10 @@ for label in data:
 ** Results
 *** Base model
 #+attr_latex: :width 400px :height 100px
-[[./imgs/vit_b.png]]
+[[./img/vit_b.png]]
 *** Large model
 #+attr_latex: :width 400px :height 100px
-[[./imgs/vit_l.png]]
+[[./img/vit_l.png]]
 
 
 * [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
