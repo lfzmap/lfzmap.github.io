@@ -4,7 +4,6 @@
 #+title: Deep Learning
 
 * [[id:55f39ffa-d905-493d-8b4a-58c51d1a860b][Supervised learning]] 
-
+* [[id:edda3e6f-d726-48b4-97ab-23d2e86cbf21][Shallow Neural Networks]] 
 * [[id:0f8b7d24-d097-4785-89c7-ed550415f0a7][Transformer]] 
-
 * [[id:59a45f0f-243e-41f4-8621-400a8bc50b5f][Segmentation]] 

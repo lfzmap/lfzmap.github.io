@@ -1,0 +1,5 @@
+:PROPERTIES:
+:ID:       edda3e6f-d726-48b4-97ab-23d2e86cbf21
+:END:
+#+title: Shallow Neural Networks
+

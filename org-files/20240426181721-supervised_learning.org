@@ -6,17 +6,51 @@
 #+LATEX_CLASS: article
 #+LATEX_CLASS_OPTIONS: [fleqno]
 
-A Supervised learning model defines a mapping from input $\overrightarrow{x}$ to output $\overrightarrow{y}$. This model represents a family
+A Supervised learning model defines a mapping from input $\vec{x}$ to output $\vec{y}$. This model represents a family
 possible relationships between them while the parameters $\phi$ of model specify one of this relationship.
 Hence we can represent a supervised learning model as follows:
 
 \begin{equation}
-\overrightarrow{y} = f [\phi,\overrightarrow{x}]
+\vec{y} = f [\phi,\vec{x}]
 \end{equation}
 
-Training or learning aims to find the right $\phi$. Specifically it runs on a /training dataset/, $I = \{x_i,y_i\}$, computes a *Loss Function* $L [\phi]$ and
+Training, learning or fitting aims to find the right $\phi$. Specifically it runs on a /training dataset/, $I = \{x_i,y_i\}$, computes a *Loss function* or *Cost function* $L [{x_i,y_i},\phi]$ and
 tries to find a $\phi$ such that the loss is minimum as possible.
 
 \begin{equation}
 \hat{\phi} = \mathop{\arg \min}\limits_{\phi}[L[\phi]]
 \end{equation}
+
+*Inference* is the process of computing $\vec{y}$ from $\vec{x}$
+
+* 1D Linear Regression
+\begin{equation}
+y = f [\phi,x] = \phi_0 + \phi_1y
+\end{equation}
+
+This model has two parameters $\boldsymbol{\phi} = [\phi_0, \phi_1]^T$
+** Loss
+*Least Square loss*
+
+\begin{equation}
+L[\phi] = \sum_i^I (f[\boldsymbol{\phi}]-y_i)^2
+\end{equation}
+
+[[./img/1d.png]]
+
+[[./img/1d_loss.png]]
+
+
+* Training
+$\boldsymbol{\phi}$ will be randomly initialized and then decrease the loss till we get to the bottom.
+
+
+[[./img/1d_train.png]]
+
+* Testing
+We use testing data to check if model accuracy generalize to unseen data.
+** Underfitting
+when model is very simple and fail to generalize.
+** Overfitting
+When train loss too much << val loss, ie only captures training data.
+
