@@ -3,5 +3,4 @@
 :END:
 #+title: Artificial Intelligence
 
-* [[id:0f8b7d24-d097-4785-89c7-ed550415f0a7][Transformer]] 
-* [[id:59a45f0f-243e-41f4-8621-400a8bc50b5f][Segmentation]] 
+* [[id:0bb78624-0709-4405-a70d-c4ac7f55cfca][Deep Learning]] 
