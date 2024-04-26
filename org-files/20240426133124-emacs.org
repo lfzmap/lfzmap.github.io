@@ -510,8 +510,8 @@ mv dist/* ~/.config/emacs/tree-sitter
   :init
   (setq org-roam-v2-ack t)
   :custom
-  (org-roam-directory "~/projects/lfzmap")
-  (org-roam-db-location "~/projects/lfzmap/org-roam.db")
+  (org-roam-directory "~/projects/lfzmap/org-files")
+  (org-roam-db-location "~/projects/lfzmap/org-files/org-roam.db")
   (org-roam-completion-everywhere t)
   :general
   (leader-keys
