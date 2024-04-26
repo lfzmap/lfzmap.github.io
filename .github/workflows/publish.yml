@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate org-roam-ui page
-        uses: lfzmap/org-roam-ui-hosting@main
+        uses: lfzmap/lfzmap.github.io@main
         with:
           org-roam-directory: org-files
           org-roam-db-filename: org-roam.db
