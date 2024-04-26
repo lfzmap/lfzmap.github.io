@@ -366,8 +366,16 @@
 *** Show image inline: C-c C-x C-v
 ** Basic setup
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; (defun dw/org-mode-setup ()
+;;   (org-indent-mode)
+;;   (variable-pitch-mode 1)
+;;   (auto-fill-mode 0)
+;;   (visual-line-mode 1)
+;;   (setq evil-auto-indent nil))
+
 (use-package org
   :straight (:type built-in)
+  ;; :hook (org-mode . dw/org-mode-setup)
   :config
   (setq org-ellipsis " ▼")
   (setq org-startup-with-inline-images t)
@@ -417,6 +425,9 @@
         "pdflatex -shell-escape -interaction nonstopmode -output-directory %o %f"))
 
 #+end_src
+** Centering org
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+ #+end_src
 ** Hyperlink
 - image path inside [[]]
 *** Open link : C-c C-o

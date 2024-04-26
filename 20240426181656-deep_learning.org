@@ -1,0 +1,6 @@
+:PROPERTIES:
+:ID:       0bb78624-0709-4405-a70d-c4ac7f55cfca
+:END:
+#+title: Deep Learning
+
+* [[id:55f39ffa-d905-493d-8b4a-58c51d1a860b][Supervised learning]] 

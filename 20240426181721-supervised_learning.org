@@ -1,0 +1,14 @@
+:PROPERTIES:
+:ID:       55f39ffa-d905-493d-8b4a-58c51d1a860b
+:END:
+#+title: Supervised learning
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [fleqno]
+
+A Supervised learning model defines a mapping from input $\overrightarrow{x}$ to output $\overrightarrow{y}$. This model represents a family
+possible relationships between them while the parameters $\phi$ of model specify one of this relationship.
+Hence we can represent a supervised learning model as follows:
+
+\begin{equation}
+\overrightarrow{y} = f[\phi,\overrightarrow{x}]
+\end{equation}
