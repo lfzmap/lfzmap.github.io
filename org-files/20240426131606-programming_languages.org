@@ -1,9 +1,69 @@
 :PROPERTIES:
 :ID:       a71cdcb6-953f-45cf-8bcd-3a1b2139c76f
 :END:
-#+title: Prog
+#+title: Programming
 
 Notes regarding the programming langauges I am learning.
 
-* [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]] 
-* [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   
+* Introduction
+"Donald Knuth describes programming not as telling a computer how to do something, but telling a person how they would instruct a computer to do something. The point is that programs are meant to be read by people, not just computers."
+/Programming from scratch : Jonathan Bartlett/
+
+GNU/LINUX : GNU = GCC tool set contains all of the programs necessary to create programs in various computer languages.
+LINUX = kernel of OS, kernel keeps track of everthing and handle every devices.
+
+So linux is the plumping and GNU is faucets.
+
+* Types
+** Machine language
+What the computer actually sees and deals with. Every command the computer sees is given as a number or sequence of numbers.
+** Assembly language
+same as machine language, except the command numbers have been replaced by letter sequences
+** High-level language
+Allow you to describe the program in a more natural language. A single command in a high-level language usually is equivalent to several commands in an assembly language.
+*** [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]]
+
+* Computer Architecture
+Modern computers are based on Von-neumann architercture/model. This model divides a computer
+two main components = CPU & Memory.
+
+** Structure of computer memory
+256 MB = 256 MegaBytes = 256 million 'PO boxes' of *fixed-length size.*
+Each box can store only a single number.
+Everything thats 'stored' is stored in memory. Von neumann specifies that not only the computer data to be stored in the memory but the computer program as well. The difference is how the computer use it as both are stored and accessed the same way.
+
+** CPU
+Access data, manipulate and move it.
+*** Fetch-execute cycle
+Read instruction from memory and executes sequentially.
+**** Program Counter
+Tell computer where to access the next instruction from. Stores memory address of next instruction to be executed. This is then passed on to instruction decoder.
+**** Instruction Decoder
+Figure out what the instruction means ie nature of computation and memory addresses to be used in the calculation.
+**** Data bus
+Computer uses it to fetch the memory addresses to be used in the calculation. An actual wire
+that connect memory and CPU.
+**** Registers
+Processors own high speed memory locations
+***** General-purpose registers
+Addition, subtraction, multiplication, comparisions, and other operations generally use general-purpose registers for processing.
+***** Special-purpose registers
+**** Arithmetic and logic unit
+Data and decoded instruction passed to ALU for actual execution.
+
+*Other Component* include cache hierarchies, superscalar processors, pipelining, branch prediction, out-of-order execution, microcode translation, coprocessors, and other optimizations.
+** Some other terms
+- *Address* : Number attached to each storage location.
+- *Byte* : size of single storage location
+
+x86 processor's byte is a number between 0 and 255.
+Graphic card has special interpretations for each number, like ASCII code table.
+Larger numbers are created by combining multilpe bytes.
+- *Word size* : Size of a typical register. x86 has 4 byte byte words.
+  Addresses would be also 4 byte in x86.
+- *Pointer* : The address number stored in the memory.
+Now how does computer knows this pointer maps to data or an instruction.
+Generally, the only way the computer knows that a memory location is an instruction is that a special-purpose register called the instruction pointer points to them at one point or another. If the instruction pointer points to a memory word, it is loaded as an instruction. Other than that, the computer has no way of knowing the difference between programs and other types of data. Some processors mark the regions of memory that can be executed.
+
+* Librarie
+** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   
