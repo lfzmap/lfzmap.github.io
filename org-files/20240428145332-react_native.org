@@ -5,3 +5,47 @@
 * Prerequisites
 ** [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]] 
 ** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]] 
+* Introduction
+
+React + React DOM => Web dev
+React + React native => Mobile app
+
+UI from jsx is compiled by react native to platform dependant views.
+logic written in js is run as as js thread hosted by react native.
+* Setup new project
+- https://reactnative.dev/docs/environment-setup
+
+#+begin_src sh
+$npx create-expo-app AwesomeProject
+
+$cd AwesomeProject
+$sudo npx expo start
+#+end_src
+
+[[./img/rn.png]]
+
+- *babel.config.js* : handle how code is transpiled
+- *app.json* : configure some settings and behaviour of the app
+- *App.js* : main component
+
+* Basics
+** Components
+Defined as functions and returns react native jsx, so div or h1.
+*** Core components
+- View
+- Text
+- Image
+- ScrollView
+- TextInput
+View is like a container with many children. You need to import components specifically.
+** Styling
+There is no styling language like css, but rather its done through inline styles and stylesheet objects in javascript. This is based on css syntax,
+so a subset of css features are implemented.
+
+#+begin_src
+const styles = StyleSheet.create({
+style1: {paddin:2}, style2: {borderColor: 'red'}
+})
+#+end_src
+
+Layouts are typically created using flexbox. Main axis = y direction and Cross axis = x axis.

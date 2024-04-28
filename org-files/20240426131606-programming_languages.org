@@ -67,4 +67,4 @@ Generally, the only way the computer knows that a memory location is an instruct
 
 * Libraries
 ** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   
-**  
+** [[id:187bb0c2-d964-4651-a35b-ac2d2573dce7][React Native]] 
