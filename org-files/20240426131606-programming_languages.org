@@ -52,7 +52,6 @@ Addition, subtraction, multiplication, comparisions, and other operations genera
 Data and decoded instruction passed to ALU for actual execution.
 
 *Other Component* include cache hierarchies, superscalar processors, pipelining, branch prediction, out-of-order execution, microcode translation, coprocessors, and other optimizations.
-** Some other terms
 - *Address* : Number attached to each storage location.
 - *Byte* : size of single storage location
 
@@ -64,6 +63,24 @@ Larger numbers are created by combining multilpe bytes.
 - *Pointer* : The address number stored in the memory.
 Now how does computer knows this pointer maps to data or an instruction.
 Generally, the only way the computer knows that a memory location is an instruction is that a special-purpose register called the instruction pointer points to them at one point or another. If the instruction pointer points to a memory word, it is loaded as an instruction. Other than that, the computer has no way of knowing the difference between programs and other types of data. Some processors mark the regions of memory that can be executed.
+
+** Some other terms
+*** Address : Number attached to each storage location.
+*** *Byte* : size of single storage location
+x86 processor's byte is a number between 0 and 255.
+Graphic card has special interpretations for each number, like ASCII code table.
+Larger numbers are created by combining multilpe bytes.
+*** *Word size* : Size of a typical register. x86 has 4 byte byte words.
+  Addresses would be also 4 byte in x86.
+*** *Pointer* : The address number stored in the memory.
+Now how does computer knows this pointer maps to data or an instruction.
+Generally, the only way the computer knows that a memory location is an instruction is that a special-purpose register called the instruction pointer points to them at one point or another. If the instruction pointer points to a memory word, it is loaded as an instruction. Other than that, the computer has no way of knowing the difference between programs and other types of data. Some processors mark the regions of memory that can be executed.
+
+** Interpreting memory
+In memory data can be saved as follows:
+eg: Name 50 bytes + address 50 bytes + number 4 byte
+But if the name and address need to be variable length we can store the pointers instead
+ie pointer to name 1 word + pointer to address 1 word + number 4 byte.
 
 
 * Libraries
