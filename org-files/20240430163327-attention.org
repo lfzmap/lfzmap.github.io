@@ -1,0 +1,10 @@
+:PROPERTIES:
+:ID:       f9a2bb31-aad5-452c-90f0-7b24c7cd1ac4
+:END:
+#+title: Attention
+
+* Seq2Seq
+
+[[./img/seq2seq.gif]]
+
+applications include machine translation, text summarization, and image captioning.

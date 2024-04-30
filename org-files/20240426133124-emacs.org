@@ -432,13 +432,13 @@
 ** Centering org
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 
-;; (defun efs/org-mode-visual-fill ()
-;;   (setq visual-fill-column-width 100
-;;         visual-fill-column-center-text t)
-;;   (visual-fill-column-mode 1))
+(defun efs/org-mode-visual-fill ()
+  (setq visual-fill-column-width 100
+        visual-fill-column-center-text t)
+  (visual-fill-column-mode 1))
 
-;; (use-package visual-fill-column
-;;   :hook (org-mode . efs/org-mode-visual-fill))
+(use-package visual-fill-column
+  :hook (org-mode . efs/org-mode-visual-fill))
  #+end_src
 ** Hyperlink
 - image path inside [[]]
@@ -470,42 +470,41 @@
 * Syntax Highlighting
 ** Treesitter
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-(use-package tree-sitter
-  :hook
-  ((css-mode
-    go-mode
-    js2-mode
-    json-mode
-    lua-mode
-    nix-mode
-    php-mode
-    php-mode
-    python-mode
-    ruby-mode
-    rust-mode
-    terraform-mode
-    typescript-mode
-    yaml-mode) . siren-tree-sitter-mode-enable)
+;; (use-package tree-sitter
+;;   :hook
+;;   ((css-mode
+;;     go-mode
+;;     js2-mode
+;;     json-mode
+;;     lua-mode
+;;     nix-mode
+;;     php-mode
+;;     php-mode
+;;     python-mode
+;;     ruby-mode
+;;     rust-mode
+;;     terraform-mode
+;;     typescript-mode
+;;     yaml-mode) . siren-tree-sitter-mode-enable)
 
-  :preface
-  (defun siren-tree-sitter-mode-enable ()
-    (tree-sitter-mode t)))
+;;   :preface
+;;   (defun siren-tree-sitter-mode-enable ()
+;;     (tree-sitter-mode t)))
 
-(use-package tree-sitter-langs
-  :hook
-  (tree-sitter-after-on . tree-sitter-hl-mode))
-
+;; (use-package tree-sitter-langs
+;;   :hook
+;;   (tree-sitter-after-on . tree-sitter-hl-mode))
 #+end_src
 ** Remap major modes to ts major mode
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-(setq major-mode-remap-alist
- '((yaml-mode . yaml-ts-mode)
-   (bash-mode . bash-ts-mode)
-   (js2-mode . js-ts-mode)
-   (typescript-mode . typescript-ts-mode)
-   (json-mode . json-ts-mode)
-   (css-mode . css-ts-mode)
-   (python-mode . python-ts-mode)))
+;; (setq major-mode-remap-alist
+;;  '((yaml-mode . yaml-ts-mode)
+;;    (bash-mode . bash-ts-mode)
+;;    (js2-mode . js-ts-mode)
+;;    (typescript-mode . typescript-ts-mode)
+;;    (json-mode . json-ts-mode)
+;;    (css-mode . css-ts-mode)
+;;    (python-mode . python-ts-mode)))
 #+end_src
 ** Download language grammars
 #+begin_src sh

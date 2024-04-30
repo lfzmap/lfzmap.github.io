@@ -3,7 +3,6 @@
 :END:
 #+title: Fine-tune SAM
 
-
 SAM expects two inputs : image and prompt. During training prompt would be the bounding box around the mask.
 The issue arises during the testing. One basicc way would be to give a grid of images spanning the entire image as prompt.
 Next step would be self prompting and Few shot learning modifications on SAM.

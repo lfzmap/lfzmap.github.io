@@ -3,3 +3,4 @@
 :END:
 #+title: Transformer
 
+transformer use [[id:f9a2bb31-aad5-452c-90f0-7b24c7cd1ac4][Attention]] to increase the speed with which models can be trained.
