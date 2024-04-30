@@ -65,6 +65,7 @@ Larger numbers are created by combining multilpe bytes.
 Now how does computer knows this pointer maps to data or an instruction.
 Generally, the only way the computer knows that a memory location is an instruction is that a special-purpose register called the instruction pointer points to them at one point or another. If the instruction pointer points to a memory word, it is loaded as an instruction. Other than that, the computer has no way of knowing the difference between programs and other types of data. Some processors mark the regions of memory that can be executed.
 
+
 * Libraries
 ** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   
 ** [[id:187bb0c2-d964-4651-a35b-ac2d2573dce7][React Native]] 

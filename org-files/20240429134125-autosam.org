@@ -1,0 +1,14 @@
+:PROPERTIES:
+:ID:       b9cdac99-0341-47a9-bf7a-59c1b6c87234
+:END:
+#+title: AutoSAM
+
+* Basics
+- [[https://arxiv.org/pdf/2306.06370][paper]]
+
+* Setup
+- [[https://github.com/talshaharabany/AutoSAM][Github]]
+#+begin_src sh
+git clone https://github.com/talshaharabany/AutoSAM.git
+#+end_src
+
