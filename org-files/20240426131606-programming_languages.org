@@ -82,6 +82,26 @@ eg: Name 50 bytes + address 50 bytes + number 4 byte
 But if the name and address need to be variable length we can store the pointers instead
 ie pointer to name 1 word + pointer to address 1 word + number 4 byte.
 
+** Data accessing methods
+*** Addressing modes
+Different ways of processor accessing data.
+**** Immediate mode
+Data to access is embedded in the instruction itself.
+Eg: if a register need to be initialized to 0, instead of giving address to read data 0 from
+we specify the immediate mode and give 0 directly.
+**** Register addressing mode
+Instruction contains a register to access, rather than a memory location.
+**** Direct addressing mode
+Instruction contains the memory address to access.
+**** Indexed addressing mode
+instruction contains address, /index register/ and /multiplier/. Multiplier = 1 => byte
+and 4 means a word. Index register is a value for offsetting the address.
+**** Indirect addressing mode
+instruction contains the address to a pointer which in turn points to the data.
+**** Base pointer addressing mode
+address to pointer and a number called /offset./
+
+* [[id:2ea4e782-48bf-412b-80dd-85c85f423700][Assembly]] 
 
 * Libraries
 ** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   

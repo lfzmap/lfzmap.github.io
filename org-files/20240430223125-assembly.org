@@ -1,0 +1,81 @@
+:PROPERTIES:
+:ID:       2ea4e782-48bf-412b-80dd-85c85f423700
+:END:
+#+title: Assembly
+
+* First program
+Program which will just exit:
+#+begin_src asm :tangle ~/projects/assembly/exit.s :mkdirp yes
+  #PURPOSE: Simple program that exits and returns a
+  #         status code back to the Linux kernel
+  #
+  #INPUT:   none
+  #
+  #OUTPUT:  returns a status code. This can be viewed
+  #         by typing
+  #
+  #         echo $?
+  #
+  #         after running the program
+  #
+  #VARIABLES:
+  #         %eax holds the system call number
+  #         %ebx holds the return status
+  #
+  .section .data
+  .section .text
+  .globl _start
+_start:
+  movl $1, %eax     # this is the linux kernel command
+                    # number (system call) for exiting
+                    # a program
+  movl $0, %ebx     # this is the status number we will
+                    # return to the operating system.
+                    # Change this around and it will
+                    # return different things to
+                    # echo $?
+  int $0x80         # this wakes up the kernel to run
+                    # the exit command
+#+end_src
+
+Above is a human readable *Source code*, now we need to *assemble* it and *link* it.
+** Assemble
+convert source code to machine readable code. exit.o is an object file.
+#+begin_src sh
+$as exit.s -o exit.o
+#+end_src
+** Linking
+In case of many source files a linker put together all object files and organize it.
+Currently we have only one object file.
+#+begin_src sh
+$ld exit.o -o exit
+#+end_src
+** Run
+#+begin_src sh
+$./exit
+#+end_src
+** Check
+#+begin_src sh
+$echo $?
+#+end_src
+Whenever linux finishes a exit program it returns a /exit status code/. If the exit is fine without any error it will give 0.
+
+* Outline of an Assembly program
+- # = comments
+** Assembler directives
+Also known as *pseudo-operations*. 
+Will not translated to machine code but rather directions for the *assembler*.
+*** .section
+breaks a program into sections
+**** .section .data
+List any memory storage needed for data.
+**** .section .text
+section for program instructions.
+*** Symbol
+_start is a symbol that can be replaced with something else during assembling or linking.
+Mark locations of the program or data by name instead of remembering the exact address. Assembler & linker keep track of addresses using symbols.
+
+_global means the assembler will not discard the symbol after assembly as linker needs it.
+
+Now /.global _start/ is special as in it marks the *start of the program*.
+*** Label
