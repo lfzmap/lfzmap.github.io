@@ -45,7 +45,7 @@ L_{seg} = L_{BCE}(I,Z_I,M) + L_{dice}(I,Z_I,M)
 \end{equation*}
 
 ** Architecture
-$g$ has a encoder arm based on harmonic dense net and a small convolutional decoder.
+$g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dense Net]] and a small convolutional decoder.
 - Encoder gives a sequence of images with channels of size 192, 256, 320, 480, 720 and 1280.
 - Decoder gives an output of size 64x64x256, which would be our $Z_I$
   
