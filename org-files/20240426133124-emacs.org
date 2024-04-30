@@ -39,11 +39,6 @@
                 eshell-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 #+end_src
-
-* Undo-tree
-#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-#+end_src
-
 * Package Manager-straight.el
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
   ;; package manager
