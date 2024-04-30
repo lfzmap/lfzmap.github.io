@@ -3,7 +3,7 @@
 :END:
 #+title: Attention
 
-* Seq2Seq
+* Seq2Seq models
 
 [[./img/seq2seq.gif]]
 
