@@ -2,6 +2,8 @@
 :ID:       b9cdac99-0341-47a9-bf7a-59c1b6c87234
 :END:
 #+title: AutoSAM
+#+STARTUP: latexpreview inlineimages
+
 
 * Basics
 - [[https://arxiv.org/pdf/2306.06370][paper]]
@@ -29,7 +31,7 @@ SAM has three components:
 then a SAM network $S$ can be summarized as
 
 \begin{equation*}
-$M_z = S(I, Z)
+M_z = S(I, Z)
 \end{equation*}
 
 One advantage of this modularity is the we can change Z into
@@ -50,7 +52,6 @@ $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dens
 - Decoder gives an output of size 64x64x256, which would be our $Z_I$
   
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
-
 
 * Model.py
 #+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
