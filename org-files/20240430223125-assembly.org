@@ -6,36 +6,13 @@
 * First program
 Program which will just exit:
 #+begin_src asm :tangle ~/projects/assembly/exit.s :mkdirp yes
-  #PURPOSE: Simple program that exits and returns a
-  #         status code back to the Linux kernel
-  #
-  #INPUT:   none
-  #
-  #OUTPUT:  returns a status code. This can be viewed
-  #         by typing
-  #
-  #         echo $?
-  #
-  #         after running the program
-  #
-  #VARIABLES:
-  #         %eax holds the system call number
-  #         %ebx holds the return status
-  #
-  .section .data
-  .section .text
-  .globl _start
-_start:
-  movl $1, %eax     # this is the linux kernel command
-                    # number (system call) for exiting
-                    # a program
-  movl $0, %ebx     # this is the status number we will
-                    # return to the operating system.
-                    # Change this around and it will
-                    # return different things to
-                    # echo $?
-  int $0x80         # this wakes up the kernel to run
-                    # the exit command
+  .section .data  # section for data
+  .section .text  # section for instructions
+  .globl _start   # start of program
+_start:           # defines the value of _start
+  movl $1, %eax   # 1 for exit system call
+  movl $0, %ebx   # 0 as status code for exit system call
+  int $0x80       # interrupt and call linux kernel
 #+end_src
 
 Above is a human readable *Source code*, now we need to *assemble* it and *link* it.
@@ -75,7 +52,23 @@ section for program instructions.
 _start is a symbol that can be replaced with something else during assembling or linking.
 Mark locations of the program or data by name instead of remembering the exact address. Assembler & linker keep track of addresses using symbols.
 
-_global means the assembler will not discard the symbol after assembly as linker needs it.
+_globl means the assembler will not discard the symbol after assembly as linker needs it.
 
 Now /.global _start/ is special as in it marks the *start of the program*.
 *** Label
+A label is a symbol followed by :. It defines the value of the symbol. Label indicates that whatever follows (data or instruction) to be the value of the symbol. So it acts as an identifier that acts as a place maker for instructions and data. eg /_start:/
+*** Instruction
+movl $1, %eax
+**** Operands
+An instruction may have operands. Here movl source destination. %eax is a register and $1 is
+a literal number 1. Registers can be general purpose and special purpose. %eax is general purpose.
+**** $
+$1 means immediate addressing mode. if it was just 1 then movl will move the data at the address 1 instead of moving the number 1 itself. ie without $ it would be direct addressing mode.
+*** System call
+Request for OS.
+For a system call we need to put some specific value to %eax. Here for /exit system call/
+1 should be in %eax.
+**** Parameters
+Extra data required for the system call to be made. In the eg its the /status code/ to be loaded in %ebx.
+*** Interrupt (int)
+int $0x80 stops the program flow and handover control to /interrupt handler/ (here its handled by linux kernel) for the system call.
