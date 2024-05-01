@@ -3,3 +3,51 @@
 :END:
 #+title: Shallow Neural Networks
 
+* Neural network example
+
+Neural network is a function, $\vec{y}=f [\vec{x},\vec{\phi}]$, depends on the parameters $\phi$
+that maps a multivariate $x$ to multivariate $y$.
+As an example consider a 10 parameter neural network mapping a scalar $x$ to scalar $y$.
+
+\begin{equation}
+y =
+\phi_0
++ \phi_1 a[\theta_{10}+\theta_{11}x]
++ \phi_2 a[\theta_{20}+\theta_{21}x]
++ \phi_3 + a[\theta_{30}+\theta_{31}x]
+\end{equation}
+
+following is the flow:
+- three linear equation
+- which goes through *activation function*
+- then weighted by $\phi_1$, $\phi_2$ and $\phi_3$
+- the weighted sum is then offset of $\phi_0$
+
+* Neural network intuition
+Eqn (1) is a combination of piecewise linear equations.
+** Hidden units
+\begin{equation*}
+h_1 = a[\theta_{10}+\theta_{11}x]
+\end{equation*}
+\begin{equation*}
+h_2 = a[\theta_{20}+\theta_{21}x]
+\end{equation*}
+\begin{equation*}
+h_3 = a[\theta_{30}+\theta_{31}x]
+\end{equation*}
+
+Thus (1) becomes
+\begin{equation*}
+y = \phi_0 + \phi_1 h_1 + \phi_2 h_2 + \phi_3 h_3
+\end{equation*}
+
+if activation function is *Rectified Linear Unit, ReLU* the linear relation get clipped below zero. A hidden unit is *inactive* if it gets clipped to zero and *active* otherwise.
+
+Each hidden unit contributes a joint to the final graph, thus 3 h ends up 4 linear regions.
+
+[[./img/shallownn.png]]
+
+
+
+
+
