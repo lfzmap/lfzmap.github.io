@@ -155,7 +155,6 @@
       :global-prefix "C-SPC")
 
     (leader-keys
-      "x" '(execute-extended-command :which-key "execute command")
       "r" '(restart-emacs :whick-key "restart emacs")
       "f" '(recentf :whick-key "recent files")
       "i" '((lambda () (interactive) (find-file user-init-file)) :which-key "open init file")
@@ -541,6 +540,21 @@ mv dist/* ~/.config/emacs/tree-sitter
           org-roam-ui-follow t
           org-roam-ui-update-on-save t
           org-roam-ui-open-on-start t))
+#+end_src
+
+* Snippets
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package yasnippet
+  :ensure t
+  :config
+  (setq yas-snippet-dirs '("~/.config/emacs/snippets"))
+  (yas-global-mode 1)
+  :general
+  (leader-keys
+  "y" '(:ignore t :which-key "yasnippets")
+  "y <escape>" '(keyboard-escape-quit :which-key t)
+  "y n" '(yas-new-snippet :which-key "new snippet")
+  "y f" '(yas-visit-snippet-file :which-key "find snippet")))
 #+end_src
 * elisp block for checking
 #+begin_src emacs-lisp :result outputs

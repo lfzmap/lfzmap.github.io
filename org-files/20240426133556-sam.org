@@ -7,7 +7,6 @@
 - https://arxiv.org/pdf/2304.02643.pdf
 
 * Basics
-
 ** Foundation Model
 - [[https://arxiv.org/pdf/2302.09419.pdf][Survey paper]]
 Also known as *Pretrained Foundation Models* (PFM). These are pretrained general models that can be finetuned to different downstream applications.
