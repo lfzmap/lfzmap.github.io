@@ -29,7 +29,7 @@ $pip install opencv-python pycocotools matplotlib onnxruntime onnx
   - B=base
 * Usage
 ** Necessary imports 
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py :mkdirp yes
 import os
 import pickle
 import time
@@ -41,12 +41,12 @@ import numpy as np
 
 #+end_src
 ** Fix opencv-pyqt5 error
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py :mkdirp yes
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
 #+end_src
 ** Create overlay function
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py :mkdirp yes
 if not torch.cuda.is_available():
     raise Exception("CUDA not available!")
 else:
@@ -74,7 +74,7 @@ def show_anns(anns):
 
 #+end_src
 ** Setup SAM model
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py :mkdirp yes
 # sam model setup
 sam = sam_model_registry["vit_l"](checkpoint="ckpts/sam_vit_l_0b3195.pth")
 sam = sam.to(device=device)
@@ -85,7 +85,7 @@ os.makedirs("./results", exist_ok=True)
 
 #+end_src
 ** Generate and save SAM results
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/sam.py :mkdirp yes
 data = {}
 for label in os.listdir(root):
     sub_root = os.path.join(root,label,"images")
@@ -140,41 +140,6 @@ for label in os.listdir(root):
 with open('sam_data.pkl', 'wb') as handle:
     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 #+end_src
-** Plot IoU histogram
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/sam/plot.py
-import numpy as np
-import matplotlib.pyplot as plt
-import pickle
-
-with open('sam_data.pkl', 'rb') as handle:
-    data = pickle.load(handle)
-
-for label in data:
-    label_data = data[label]
-    iou = []
-    x_data = label_data["data"]
-    for x in x_data:
-        iou.append(x["iou"])
-    iou = np.array(iou)
-    bins = np.arange(0.0, 1.0+0.1, 0.1) # fixed number of bins
-    # plt.xlim([min(data)-5, max(data)+5])
-    plt.figure()
-    plt.hist(iou, bins=bins, alpha=0.5)
-    plt.title(f'{label}')
-    plt.xlabel('iou')
-    plt.ylabel('number of images')
-    # plt.show()
-    plt.savefig(f'{label}.png')
-    plt.close()
-#+end_src
-** Results
-*** Base model
-#+attr_latex: :width 400px :height 100px
-[[./img/vit_b.png]]
-*** Large model
-#+attr_latex: :width 400px :height 100px
-[[./img/vit_l.png]]
-
 
 * [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
 * [[id:b9cdac99-0341-47a9-bf7a-59c1b6c87234][AutoSAM]] 

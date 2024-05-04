@@ -525,24 +525,3 @@ accuracy /= c
 recall /= c
 print(test_loss,iou_score,f1_score, f2_score, accuracy,recall)
 #+end_src
-
-** Results
-   - Batch Size = 4
-   - LR = 0.00001
-   - Loss = Dice Loss
-   - Epochs = 100
-   - Optim = Adam
-
-     #+ATTR_LATEX: :environment longtable :align l|lp{3cm}r|l
-     | Dice Loss | 0.088 |
-     | IoU       |  0.89 |
-     | F1        |  0.94 |
-     | Acc       | 0.97  |
-     | Recall    | 0.94  |
-
-     [[./img/fl.png]]
-     
-     [[./img/ac.png]]
-
-     [[./img/bpd.png]]
-

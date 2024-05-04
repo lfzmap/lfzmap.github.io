@@ -485,12 +485,20 @@ import torchvision.transforms as T
 from dataset import MediScanSegDataset
 import torch.nn.functional as F
 from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
+import os
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
 
-with open('val.pkl', 'rb') as f:
-    val = pickle.load(f)
+# with open('val.pkl', 'rb') as f:
+#     val = pickle.load(f)
+
+root = "/home/lfz/projects/ultrasound/datasets/mediscan-seg/FL/images"
+val = os.listdir(root)
+val = [os.path.join(root, x) for x in val]
+val = val[:10]
+
 
 transform = T.Compose([T.ToTensor(),])
 val_dataset = MediScanSegDataset(val, transform=transform, resize_dim=512)
@@ -506,8 +514,9 @@ img_prompt = model_g(imgs.to(device))
 model_type = "vit_b"
 ckpt_path = "/home/lfz/projects/ultrasound/datasets/sam_ckpts/sam_vit_b_01ec64.pth"
 sam = sam_model_registry[model_type](checkpoint=ckpt_path)
+sam.to(device)
 
-input_images = torch.stack([sam.preprocess(x) for x in imgs], dim=0)
+input_images = torch.stack([sam.preprocess(x.to(device)) for x in imgs], dim=0)
 image_embeddings = sam.image_encoder(input_images)
 
 # sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
