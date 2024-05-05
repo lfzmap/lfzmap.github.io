@@ -21,7 +21,9 @@ What the computer actually sees and deals with. Every command the computer sees 
 same as machine language, except the command numbers have been replaced by letter sequences
 ** High-level language
 Allow you to describe the program in a more natural language. A single command in a high-level language usually is equivalent to several commands in an assembly language.
+
 *** [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]]
+*** [[id:62040c0e-a0ca-4f42-a6ef-a9eb992ae15c][Emacs-Lisp]] 
 
 * Computer Architecture
 Modern computers are based on Von-neumann architercture/model. This model divides a computer
