@@ -1,0 +1,119 @@
+:PROPERTIES:
+:ID:       0a095ab7-4601-4680-8885-2b6eaf3c7c0e
+:END:
+#+title: Pytorch-lightning
+* Trainer
+** Lightning module
+LightningModule is the full recipe that defines how your nn.Modules interact.
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pl-module" :makedirp yes
+# -*- mode: snippet -*-
+# name: pl-module
+# key: module
+# --
+import torch
+import lightning as L
+from model import CustomModel
+
+class CustomModule(L.LightningModule):
+    def __init__(self, model, lr):
+        super().__init__()
+        self.model = CustomModel()
+        self.lr = lr
+        self.save_hyperparameters(ignore=model)
+
+    def training_step(self, batch, batch_idx):
+        # training_step defines the train loop.
+        x, y = batch
+        z = self.model(x)
+        loss = 
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        # this is the validation loop
+        x, y = batch
+        z = self.model(x)
+        val_loss = 
+        self.log("val_loss", val_loss)
+
+    def test_step(self, batch, batch_idx):
+        # this is the test loop
+        x, y = batch
+        z = self.model(x)
+        test_loss = 
+        self.log("test_loss", test_loss)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+#+end_src
+** Dataset module
+The LightningDataModule is a convenient way to manage data in PyTorch Lightning. It encapsulates training, validation, testing, and prediction dataloaders, as well as any necessary steps for data processing, downloads, and transformations.
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pl-datasetmodule" :makedirp yes
+# -*- mode: snippet -*-
+# name: pl-datasetmodule
+# key: datasetmodule
+# --
+
+import lightning as L
+from torch.utils.data import DataLoader
+from torchvision import transforms as T
+
+
+class CustomDataModule(L.LightningDataModule):
+    def __init__(self, data_dir: str = "./"):
+        super().__init__()
+        self.data_dir = data_dir
+        self.transform = T.Compose([T.ToTensor()])
+
+    def prepare_data(self):
+        # download
+        pass
+
+    def setup(self, stage: str):
+        # Assign train/val datasets for use in dataloaders
+        if stage == "fit":
+           self.train_ds = 
+
+        # Assign test dataset for use in dataloader(s)
+        if stage == "test":
+
+        if stage == "predict":
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=32)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=32)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_ds, batch_size=32)
+
+    def predict_dataloader(self):
+        return DataLoader(self.predict_ds, batch_size=32)
+#+end_src
+
+** Main calls for training
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pl-main" :makedirp yes
+# -*- mode: snippet -*-
+# name: pl-main
+# key: main
+# --
+
+import lightning as L
+from lightning.pytorch.cli import LightningCLI
+from modules import *
+from datamodules import *
+
+cli = LightningCLI()
+
+# model
+model = CustomModule()
+
+# train model
+# saves checkpoints to 'some/path/' at every epoch end
+trainer = L.Trainer(default_root_dir="some/path/")
+datamodule = CustomDataModule()
+trainer.fit(model, datamodule=datamodule)#fast_dev_run=True
+# test the model
+trainer.test(model, dataloaders=test_loader)
+#+end_src

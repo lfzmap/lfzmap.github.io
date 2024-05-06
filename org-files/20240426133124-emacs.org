@@ -666,9 +666,11 @@ if __name__ == "__main__":
 #+end_src
 ** pytorch model
 #+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pytorch-model" :makedirp yes
-# key: model
+# -*- mode: snippet -*-
 # name: pytorch model
+# key: model
 # --
+
 import torch.nn as nn
 
 class CustomModel(nn.Module):
