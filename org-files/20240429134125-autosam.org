@@ -54,20 +54,29 @@ $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dens
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
 
 * Dataloader
+** Necessary imports
 #+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
+import torchvision.transforms as T
 import cv2
+import os
 from PIL import Image
 import numpy as np
 from torch.utils.data import Dataset
-
+import random
+import torch
+import pickle
+#+end_src
+** Dataset class
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
 class MediScanSegDataset(Dataset):
   def __init__(self,
+               img_dir,
                img_paths,
                transform=None,
-               train_mode=True,
                resize_dim=256,
                model_type="base"):
     self.img_paths = img_paths
+    self.img_dir = img_dir
     self.resize_dim=resize_dim
     self.transform=transform
     
@@ -75,25 +84,89 @@ class MediScanSegDataset(Dataset):
     return len(self.img_paths)
 
   def __getitem__(self,idx):
-    img_path = self.img_paths[idx]
+    img_path = os.path.join(self.img_dir, self.img_paths[idx])
     mask_path = img_path.replace("images", "masks")
+    id_ = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
 
     img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (self.resize_dim, self.resize_dim), interpolation= cv2.INTER_LINEAR)
     img = Image.fromarray(img)
     mask = cv2.imread(mask_path)
     mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-    mask = cv2.resize(mask, (self.resize_dim, self.resize_dim), interpolation= cv2.INTER_LINEAR)
     mask[mask<200]=0
     mask[mask>=200]=255
+    mask = Image.fromarray(mask)
     if self.transform:
        img = self.transform(img)
        mask = self.transform(mask)
-
-    id_ = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
     return {"img": np.array(img), "mask": mask, "id":id_}
 
+#+end_src
+** Setup transformations
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
+def get_transforms(resize_dim):
+    transform_train = T.Compose([
+        T.Resize((resize_dim, resize_dim)),
+        T.ColorJitter(brightness=0.2,
+                               contrast=0.2,
+                               saturation=0.2,
+                               hue=0.1),
+        T.RandomHorizontalFlip(),
+        T.RandomAffine(5, scale=(0.75, 1.25)),
+        T.ToTensor(),
+    ])
+    transform_test = T.Compose([
+        T.Resize((resize_dim, resize_dim)),
+        T.ToTensor(),
+    ])
+    return transform_train, transform_test
+#+end_src
+** Create torch datasets
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
+def get_mediscan_dataset(img_dir, debug=False):
+    imgs = {}
+    for label in os.listdir(img_dir):
+        imgs[label] = [os.path.join(label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+
+    train = []
+    test = []
+    val = []
+
+    for label in imgs:
+        random.shuffle(imgs[label])
+        train_split = imgs[label][:int(0.9*(len(imgs[label])))]
+        train += train_split
+        tmp = imgs[label][int(0.9*(len(imgs[label]))):]
+        random.shuffle(tmp)
+        tmp_val = tmp[:int(0.5*(len(tmp)))]
+        tmp_test = tmp[int(0.5*(len(tmp))):]
+        val += tmp_val
+        test += tmp_test
+
+    random.shuffle(train)
+    random.shuffle(val)
+    random.shuffle(test)
+    with open('train.pkl', 'wb') as f:
+        pickle.dump(train, f)
+    with open('val.pkl', 'wb') as f:
+        pickle.dump(val, f)
+    with open('test.pkl', 'wb') as f:
+        pickle.dump(test, f)
+
+    print(f'Train: {len(train)}; Val: {len(val)}; Test: {len(test)}')
+
+    if debug:
+       train = val[:10]
+       val = train
+
+    train_ts, test_ts = get_transforms(256)
+    train_ds = MediScanSegDataset(img_dir, train, transform=train_ts)
+    val_ds = MediScanSegDataset(img_dir, val, transform=test_ts)
+    test_ds = MediScanSegDataset(img_dir, test, transform=test_ts)
+    return train_ds, val_ds, test_ds
+#+end_src
+
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     import pickle
@@ -474,60 +547,253 @@ if __name__ == "__main__":
     #    print(i.size())
 #+end_src
 * Train
+** Necessary imports
 #+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score
+from statistics import mean
+import wandb
 import torch
-import pickle
 import torch.nn as nn
 from model import ModelEmb
-from transformers import SamModel
 from torch.utils.data import DataLoader
-import torchvision.transforms as T
-from dataset import MediScanSegDataset
+from dataset import get_mediscan_dataset
 import torch.nn.functional as F
+from torch.optim import Adam
+import monai
+from monai.networks.utils import one_hot
+from tqdm import tqdm
+from torchvision.utils import save_image
 from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
-import os
+os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
+#+end_src
+** Check for GPU
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+if not torch.cuda.is_available():
+   raise Exception("GPU not available")
+else:
+   device = "cuda"
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(device)
+#+end_src
+** Hyper-parameters
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+lr = 1e-3
+train_batch_size = 2
+val_batch_size = 1
+num_epochs = 100
+img_dir = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
+debug = False
+if debug:
+   num_epochs = 1
+#+end_src
+** Setup dataloaders
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+train_ds, val_ds, test_ds = get_mediscan_dataset(img_dir, debug=debug)
+train_dataloader = DataLoader(dataset=train_ds, batch_size=train_batch_size, shuffle=True)
+val_dataloader = DataLoader(dataset=val_ds, batch_size=val_batch_size, shuffle=False)
+test_dataloader = DataLoader(dataset=test_ds, batch_size=val_batch_size, shuffle=False)
 
-# with open('val.pkl', 'rb') as f:
-#     val = pickle.load(f)
-
-root = "/home/lfz/projects/ultrasound/datasets/mediscan-seg/FL/images"
-val = os.listdir(root)
-val = [os.path.join(root, x) for x in val]
-val = val[:10]
-
-
-transform = T.Compose([T.ToTensor(),])
-val_dataset = MediScanSegDataset(val, transform=transform, resize_dim=512)
-val_dataloader = DataLoader(dataset=val_dataset, batch_size=2, shuffle=False)
-x = next(iter(val_dataloader))
-imgs = x["img"]
-masks = x["mask"]
-
-model_g = ModelEmb()
-model_g.to(device)
-img_prompt = model_g(imgs.to(device))
-
+#+end_src
+** Load pre-trained SAM model
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
 model_type = "vit_b"
 ckpt_path = "/home/lfz/projects/ultrasound/datasets/sam_ckpts/sam_vit_b_01ec64.pth"
 sam = sam_model_registry[model_type](checkpoint=ckpt_path)
 sam.to(device)
 
-input_images = torch.stack([sam.preprocess(x.to(device)) for x in imgs], dim=0)
-image_embeddings = sam.image_encoder(input_images)
+for name, param in sam.named_parameters():
+   param.requires_grad_(False)
 
-# sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
-# low_res_masks, iou_predictions = sam.mask_decoder(
-#     image_embeddings=image_embeddings,
-#     image_pe=sam.prompt_encoder.get_dense_pe(),
-#     sparse_prompt_embeddings=sparse_embeddings_none,
-#     dense_prompt_embeddings=img_prompt.detach().cpu(),
-#     multimask_output=False,
-# )
-# print(low_res_masks.size())
-# torch.cuda.empty_cache()
 #+end_src
+** Load self-prompt encoder
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+model_g = ModelEmb()
+model_g.to(device)
+#+end_src
+** Optimizer and Loss
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+optimizer = Adam(model_g.parameters(), lr=lr)
+dice_loss = monai.losses.DiceCELoss()
+bce_loss = nn.BCEWithLogitsLoss()
+#+end_src
+** Wandb for logging
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+wandb.login()
+wandb.init(
+    project="sam",
+    config={
+        "lr": 1e-5,
+        "epochs": num_epochs,
+    },)
 
+#+end_src
+** Learning loop
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
+os.makedirs("results", exist_ok=True)
+os.makedirs("ckpts", exist_ok=True)
+for epoch in range(num_epochs):
+    print(f'EPOCH: {epoch}')
+    epoch_losses = []
+    # keep model_g in train mode for train loop
+    model_g.train()
+    for batch in tqdm(train_dataloader):
+        # extract images
+        imgs = batch["img"]
+        imgs = imgs.to(device)
+        masks = batch["mask"]
+        masks = masks.to(device)
+        # generate prompt embedding from input image itself
+        img_prompt = model_g(imgs)
+
+        input_images = torch.stack([sam.preprocess(x) for x in imgs], dim=0)
+        sam.eval()
+        with torch.no_grad():
+            image_embeddings = sam.image_encoder(input_images)
+            sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
+            preds, iou_pred = sam.mask_decoder(
+                image_embeddings=image_embeddings,
+                image_pe=sam.prompt_encoder.get_dense_pe(),
+                sparse_prompt_embeddings=sparse_embeddings_none,
+                dense_prompt_embeddings=img_prompt,
+                multimask_output=False,
+            )
+
+        
+        preds = torch.sigmoid(preds)
+        preds[preds<=0.5] = 0.0
+        preds[preds>0.5] = 1.0
+        preds = one_hot(preds[:, None, ...], num_classes=2)
+        preds = preds.squeeze()
+
+        masks[masks<=0.5] = 0.0
+        masks[masks>0.5] = 1.0
+        masks = one_hot(masks[:, None, ...], num_classes=2)
+        masks = masks.squeeze()
+
+        preds.requires_grad_()
+        dice = dice_loss(preds, masks)
+        bce = bce_loss(preds, masks)
+        # loss = bce + dice
+        loss = dice
+
+        # backward pass (compute gradients of parameters w.r.t. loss)
+        optimizer.zero_grad()
+        loss.backward()
+
+        # optimize
+        optimizer.step()
+        epoch_losses.append(loss.item())
+        wandb.log({"Train Loss batch": loss.item()})
+
+    print(f'Train loss epoch: {mean(epoch_losses)}')
+    wandb.log({"Train Loss epoch": mean(epoch_losses)})
+
+    epoch_losses = []
+    iou = []
+    acc = []
+    recall = []
+    precision = []
+    f1 = []
+    for batch in tqdm(val_dataloader):
+        # extract images
+        imgs = batch["img"]
+        imgs = imgs.to(device)
+        masks = batch["mask"]
+        masks = masks.to(device)
+
+        input_images = torch.stack([sam.preprocess(x) for x in imgs], dim=0)
+        model_g.eval()
+        with torch.no_grad():
+            # generate prompt embedding from input image itself
+            img_prompt = model_g(imgs)
+            image_embeddings = sam.image_encoder(input_images)
+            sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
+            preds, iou_pred = sam.mask_decoder(
+                image_embeddings=image_embeddings,
+                image_pe=sam.prompt_encoder.get_dense_pe(),
+                sparse_prompt_embeddings=sparse_embeddings_none,
+                dense_prompt_embeddings=img_prompt,
+                multimask_output=False,
+            )
+
+
+        preds = torch.sigmoid(preds)
+        preds[preds<=0.5] = 0.0
+        preds[preds>0.5] = 1.0
+        preds_onehot = one_hot(preds[:, None, ...], num_classes=2)
+        preds_onehot = preds_onehot.squeeze()
+
+        masks[masks<=0.5] = 0.0
+        masks[masks>0.5] = 1.0
+        masks_onehot = one_hot(masks[:, None, ...], num_classes=2)
+        masks_onehot = masks_onehot.squeeze()
+
+        dice = dice_loss(preds, masks)
+        bce = bce_loss(preds, masks)
+        # loss = bce + dice
+        loss = dice
+
+        epoch_losses.append(loss.item())
+
+        # convert soft mask to hard mask
+        probs = preds.cpu().numpy().squeeze()
+        probs = probs.astype(np.uint8)
+
+        masks = masks.cpu().numpy().squeeze()
+        masks = masks.astype(np.uint8)
+        img_raw = imgs.squeeze(0).cpu().numpy()
+        img_raw = np.transpose(img_raw, (1, 2, 0))
+
+        intersection = np.logical_and(probs, masks)
+        union = np.logical_or(probs, masks)
+        iou_score = np.sum(intersection) / np.sum(union)
+        iou.append(iou_score)
+
+        y_true = masks.flatten()
+        y_pred = probs.flatten()
+        acc.append(accuracy_score(y_true, y_pred))
+        recall.append(recall_score(y_true, y_pred))
+        precision.append(precision_score(y_true, y_pred))
+        f1.append(f1_score(y_true, y_pred))
+
+        overlay = img_raw.copy()
+        mask = np.zeros(img_raw.shape)
+        medsam_seg = probs.astype(bool)
+        mask[medsam_seg] = [0,0,1.0]
+        plt.figure()
+        plt.imshow(img_raw)
+        plt.imshow(mask, alpha=0.5)
+        plt.savefig(os.path.join("results", batch["id"][0]+"png"), bbox_inches='tight')
+        plt.close()
+    print(f'Val loss epoch: {mean(epoch_losses)}')
+    wandb.log({"Val loss epoch": mean(epoch_losses)})
+    wandb.log({"iou": mean(iou)})
+    wandb.log({"acc": mean(acc)})
+    wandb.log({"precision": mean(precision)})
+    wandb.log({"recall": mean(recall)})
+    wandb.log({"f1": mean(f1)})
+
+# Save the model's state dictionary to a file
+torch.save(model_g.state_dict(), os.path.join("ckpts", "autosam_finetuned.pth"))
+#+end_src
+** Testing
+#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/test1.py :mkdirp yes
+from monai.losses.dice import *  # NOQA
+import torch
+from monai.losses.dice import DiceLoss
+
+B, C, H, W = 7, 3, 256, 256
+input = torch.rand(B, C, H, W)
+print(input.size())
+
+target_idx = torch.randint(low=0, high=3, size=(B, H, W)).long()
+print(target_idx.size())
+target = one_hot(target_idx[:, None, ...], num_classes=C)
+print(target.size())
+# self = DiceLoss(reduction='none')
+# loss = self(input, target)
+# assert np.broadcast_shapes(loss.shape, input.shape) == input.shape
+#+end_src

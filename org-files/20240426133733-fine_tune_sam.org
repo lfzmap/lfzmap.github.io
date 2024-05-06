@@ -295,6 +295,7 @@ for epoch in range(num_epochs):
 # Save the model's state dictionary to a file
 torch.save(model.state_dict(), "sam_finetuned.pth")
 #+end_src
+
 * Testing
 #+begin_src python :tangle ~/projects/ultrasound/segmentation/fine_tune_sam/test.py :mkdirp yes
 from transformers import SamModel, SamConfig, SamProcessor

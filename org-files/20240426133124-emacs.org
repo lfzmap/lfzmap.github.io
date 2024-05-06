@@ -556,6 +556,128 @@ mv dist/* ~/.config/emacs/tree-sitter
   "y n" '(yas-new-snippet :which-key "new snippet")
   "y f" '(yas-visit-snippet-file :which-key "find snippet")))
 #+end_src
+** pytorch train 
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pytorch-train" :makedirp yes
+# -*- mode: snippet -*-
+# name: pytorch-train
+# key: train
+# --
+import torch
+import torch.nn as nn
+import wandb
+from dataset import get_dataset
+from model import CustomModel
+from torch.utils.data import DataLoader
+from torch.optim import Adam
+
+if not torch.cuda.is_available():
+    raise Exception("CUDA not available!")
+else:
+    print("CUDA available")
+    device = torch.device('cuda')
+
+# Hyper parameters
+lr = 1e-3
+train_batch_size = 2
+val_batch_size = 1
+num_epochs = 100
+img_dir = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
+debug = False
+if debug:
+   num_epochs = 1
+
+train_ds, val_ds, test_ds = get_dataset(img_dir, debug=debug)
+train_dataloader = DataLoader(dataset=train_ds, batch_size=train_batch_size, shuffle=True)
+val_dataloader = DataLoader(dataset=val_ds, batch_size=val_batch_size, shuffle=False)
+test_dataloader = DataLoader(dataset=test_ds, batch_size=val_batch_size, shuffle=False)
+
+model = CustomModel()
+model.to(device)
+
+optimizer = Adam(model.parameters(), lr=lr)
+loss = nn.BCEWithLogitsLoss()
+
+wandb.login()
+wandb.init(
+    project="testProject",
+    config={
+        "lr": 1e-5,
+        "epochs": num_epochs,
+    },)
+
+
+os.makedirs("results", exist_ok=True)
+os.makedirs("ckpts", exist_ok=True)
+for epoch in range(num_epochs):
+    print(f'EPOCH: {epoch}')
+    epoch_losses = []
+    model_g.train()
+    for batch in tqdm(train_dataloader):
+        pred = model_g(batch)
+
+        optimizer.zero_grad()
+        loss.backward()
+
+        optimizer.step()
+        epoch_losses.append(loss.item())
+        wandb.log({"Train Loss batch": loss.item()})
+
+    print(f'Train loss epoch: {mean(epoch_losses)}')
+    wandb.log({"Train Loss epoch": mean(epoch_losses)})
+
+    epoch_losses = []
+    for batch in tqdm(val_dataloader):
+        model.eval()
+        with torch.no_grad():
+            pred = model(batch)
+
+        epoch_losses.append(loss.item())
+
+    print(f'Val loss epoch: {mean(epoch_losses)}')
+# Save the model's state dictionary to a file
+torch.save(model_g.state_dict(), os.path.join("ckpts", "model.pth"))
+#+end_src
+** pytorch dataset
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pytorch-dataset" :makedirp yes
+# -*- mode: snippet -*-
+# name: pytorch dataset
+# key: dataset
+# --
+import os
+import torch
+from torch.utils.data import Dataset
+from torchvision.transforms import ToTensor
+
+class $1CustomDataset(Dataset):
+    def __init__(self, transform=None):
+        self.transform = transform
+
+    def __len__(self):
+        return len()
+
+    def __getitem__(self, idx):
+        if self.transform:
+           pass
+
+        return 0
+
+if __name__ == "__main__":
+    d = CustomDataset()
+#+end_src
+** pytorch model
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/pytorch-model" :makedirp yes
+# key: model
+# name: pytorch model
+# --
+import torch.nn as nn
+
+class CustomModel(nn.Module):
+    def __init__(self ):
+        super(CustomModel, self).__init__()
+
+    def forward(self, x):
+        return 0
+#+end_src
 * elisp block for checking
 #+begin_src emacs-lisp :result outputs
 ;; (treesit-available-p)
