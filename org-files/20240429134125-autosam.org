@@ -580,7 +580,7 @@ else:
 #+end_src
 ** Hyper-parameters
 #+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-lr = 1e-3
+lr = 1e-4
 train_batch_size = 2
 val_batch_size = 1
 num_epochs = 100
