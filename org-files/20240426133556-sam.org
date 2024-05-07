@@ -5,17 +5,54 @@
 
 * Paper
 - https://arxiv.org/pdf/2304.02643.pdf
-
 * Basics
-** Foundation Model
-- [[https://arxiv.org/pdf/2302.09419.pdf][Survey paper]]
-Also known as *Pretrained Foundation Models* (PFM). These are pretrained general models that can be finetuned to different downstream applications.
-Eg: ChatGPT is fine tuned on pretrained GPT. Recently *Unified PFM* are introduced capable of handling multi-modal data.
+[[id:6a264343-c962-4719-a3ce-bdf68ae8ff41][Large language models]] pre-trained on large datasets (web-scale) are known as [[id:021a9dcf-0ed8-429b-b04e-fc2867f2d384][Foundation models]]. These models show very good performance on unseen dataset ie [[id:6d9aa203-daeb-4e41-9aae-41f30adf45ef][Zero-shot learning]] and [[id:7f9d9efa-0b6a-4020-a183-6e9432d7737c][Few-shot learning]]. Further they can also be used for various tasks or even out-of-distribution dataset. This is enabled by [[id:1320fe6c-2d8d-49a6-a012-7c826c07f83a][Prompt engineering]], using text to prompt the model to give a valid response depending on the task.
 
-** Zero-Shot Learning
--[[https://arxiv.org/pdf/2011.08641.pdf][Survey paper]] 
+CLIP and ALIGN are examples of foundation model that tries to align text and image modalities together. Goal of SAM is /to create a foundation model for image segmentation/.
 
-*Zero-shot learning (ZSL)* is a model's ability to detect classes never seen during training. The condition is that the classes are not known during supervised learning. 
+Following components are crucial in creating a foundation model:
+1. Which task provides better zero shot generalization?
+2. What would be the corresponding model architecture?
+3. What data is required?
+
+Ans 1: Promptable segmentation task
+Ans 2: Model with a flexible prompt encoder and mask generator
+Ans 3: A data engine using model itself to help the annotations
+
+* Segment Anything Task
+In NLP task for pretraining foundation model is /next token prediction/. In segmentation a prompt would be set of points, bounding box, masks, free form text etc. A valid output would be a valid mask even if we give vague prompts for multiple objects, there should be a minimum one reasonable mask. 
+
+[[./img/samtask.png]]
+
+Aim of SAM is to be adaptable for other segmentation tasks, like:
+1. Semantic segmentation
+   pixelwise class label eg: cars-red, background-green
+2. Instance segmentation
+   object detection+segmentation. eg: car_1, car_2
+3. Panoptic segmentation
+   each pixel has two identifiers: class label and instance id. ie semantic+instance
+4. Interactive segmentation
+5. Edge detection
+6. Foreground segmentation
+7. Object proposal segmentation
+
+SAM can act as a component in a larger system addressing different segmentation task.
+
+* Segment Anything Model
+
+Constraints:
+1. Support Flexible prompts
+2. Generate masks in amortized real-time
+3. Ambiguity aware
+
+   A 3 component design
+[[./img/sammodel.png]]
+
+Ans 1: A prompt encoder enables handling multiple type of prompts
+Ans 2: We can use a single image embedding with multiple prompts giving us a 50 ms inference time for prompt encoder+mask decoder.
+Ans 3: A single prompt and embedding will generate multiple mask to handle the ambiguity.
+
+
 
 * Installation
 #+begin_src sh

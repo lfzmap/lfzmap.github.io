@@ -1,0 +1,9 @@
+:PROPERTIES:
+:ID:       6d9aa203-daeb-4e41-9aae-41f30adf45ef
+:END:
+#+title: Zero-shot learning
+
+-[[https://arxiv.org/pdf/2011.08641.pdf][Survey paper]] 
+
+*Zero-shot learning (ZSL)* is a model's ability to detect classes never seen during training. The condition is that the classes are not known during supervised learning. 
+
