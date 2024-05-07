@@ -52,7 +52,16 @@ Ans 1: A prompt encoder enables handling multiple type of prompts
 Ans 2: We can use a single image embedding with multiple prompts giving us a 50 ms inference time for prompt encoder+mask decoder.
 Ans 3: A single prompt and embedding will generate multiple mask to handle the ambiguity.
 
+[[./img/sammodel2.png]]
 
+** Image Encoder
+It can be any network that output $C \times H \times W$. SAM uses an MAE pretrained Vision transformer.
+
+TODO:
+Attention
+Transformer
+Vision transformer
+MAE ViT
 
 * Installation
 #+begin_src sh

@@ -1,0 +1,5 @@
+:PROPERTIES:
+:ID:       e6912603-7852-4359-847c-d14008e9045e
+:END:
+#+title: Recurrent neural network
+

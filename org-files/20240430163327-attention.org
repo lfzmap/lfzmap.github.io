@@ -7,4 +7,9 @@
 
 [[./img/seq2seq.gif]]
 
-applications include machine translation, text summarization, and image captioning.
+Applications include machine translation, text summarization, and image captioning.
+Under the hood seq2seq is a encoder-decoder architecture, where encoder pass a vector named *Context* to decoder.
+
+[[./img/seq2seq2.gif]]
+
+Encoder and Decoder models tend to be [[id:e6912603-7852-4359-847c-d14008e9045e][Recurrent neural network]] usually.
