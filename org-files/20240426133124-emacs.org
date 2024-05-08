@@ -391,6 +391,7 @@
   "o r" '(org-ctrl-c-ctrl-c :which-key "run code block")
   "o p" '(org-latex-export-to-pdf :which-key "export to pdf")
   "o e" '(org-edit-special :which-key "edit code")))
+(setq org-image-actual-width nil)
 #+end_src
 ** Change Bullet Designs
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes

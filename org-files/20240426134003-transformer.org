@@ -4,3 +4,103 @@
 #+title: Transformer
 
 transformer use [[id:f9a2bb31-aad5-452c-90f0-7b24c7cd1ac4][Attention]] to increase the speed with which models can be trained.
+
+#+ATTR_ORG: :width 600
+[[./img/transformer1.png]]
+
+[[./img/transformer2.png]]
+
+Self attention layer let the encoder look at the other elements of the input sequence.
+Decoder has an extra attention layer letting it focus on relevant parts of the input similar to the attention in seq2seq models.
+
+#+ATTR_ORG: :width 600
+[[./img/transformer3.png]]
+
+An encoder recieves a list of vectors where each vector corresponds to a word. Length of word embedding vector is usually 512.
+
+The length of the list is a hyperparameter.
+
+Self attention layer looks at all vectors at the same time, where as the feed forward NN is applied parallelly. It is the same NN applied on each vector seperately giving us parallelization. 
+
+* Self Attention
+
+#+ATTR_ORG: :width 600
+[[./img/transformer4.png]]
+
+Steps in calculating self-attention:
+
+** Computing Query, Key and Value
+create three vectors from each of the encoder’s input vectors (in this case, the embedding of each word). So for each word, we create a *Query* vector, a *Key* vector, and a *Value* vector. These vectors are created by multiplying the embedding by three matrices that we trained during the training process.
+
+   #+ATTR_ORG: :width 600
+   [[./img/transformer5.png]]
+
+  New 3 vectors has smaller dimension ie 64. It doesn't need to be smaller.
+
+*** Matrix form
+Practically we calculate for all word embeddings at the same time using a matrix
+
+[[./img/transformer6.png]]
+
+
+
+
+** Calculate Score
+for a word/vector we calculate a score w.r.t other elements of input list.
+
+1. score of word m w.r.t word n =  $S_{mn} = q_m.k_n$
+2. Divide by $\sqrt{d_k}$, ie dimension of key vector to get stable gradients.
+3. Pass the value to softmax function.
+4. Multiply each value vector using this value.
+5. Sum up the weighted value vectors from 4 to obtain the output of the self-attention layer for the word #m
+   
+*** Matrix form
+#+ATTR_ORG: :width 600
+[[./img/transformer7.png]]
+
+
+** Multi-headed attention
+A single z encoding can be dominated by the word itself, hence calculating multiple Z increase the representation subspaces.
+
+#+ATTR_ORG: :width 600
+[[./img/transformer8.png]]
+
+
+#+ATTR_ORG: :width 600
+[[./img/z1.png]]
+
+This produces 8 Z matrices for a single word/vector. But the next layer of feed forward NN expects a single matrix. Solution is to multiply a weight matrix with the concatenated z matrices producing a single z matrix.
+
+#+ATTR_ORG: :width 600 :height 600
+[[./img/z2.png]]
+
+** Summary
+
+#+ATTR_ORG: :width 600
+[[./img/transformer9.png]]
+
+* Position information
+
+In order to teach the model the information of the order of the words we combine the word embedding vector with a positional encoding vector.
+
+#+ATTR_ORG: :width 600
+[[./img/position.png]]
+
+* Residual connection around self attention layer
+
+#+ATTR_ORG: :width 600
+[[./img/norm.png]]
+
+* Decoder
+
+Topmost or the last encoder spits out the list of encoded vectors. Using which we create a set of key and query vectors. These are to be used in the encoder-decoder attention layer of every decoder module.
+
+#+ATTR_ORG: :width 600
+[[./img/decoder1.gif]]
+
+The output from the top decoder at a time is fed into the bottom decoder in the next time step.
+The self attention layer can only look at earlier positions so we mask the future positions by setting it to -inf before softmax step.
+
+Encoder-decoder attention layer use query matrix generated from previous layer, but the key and value matrix from the output of encoder stack.
+
+After the decoder stack there is a usual *decoder stack o/p->linear->logits->softmax* layers. The number with the highest prob indicate the corresponding word.
