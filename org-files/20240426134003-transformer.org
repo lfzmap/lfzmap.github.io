@@ -95,7 +95,6 @@ In order to teach the model the information of the order of the words we combine
 
 Topmost or the last encoder spits out the list of encoded vectors. Using which we create a set of key and query vectors. These are to be used in the encoder-decoder attention layer of every decoder module.
 
-#+ATTR_ORG: :width 600
 [[./img/decoder1.gif]]
 
 The output from the top decoder at a time is fed into the bottom decoder in the next time step.
