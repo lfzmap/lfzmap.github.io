@@ -53,747 +53,149 @@ $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dens
   
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
 
-* Dataloader
-** Necessary imports
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
-import torchvision.transforms as T
+* Model
+#+begin_src python :tangle ~/projects/main/models/autosam_encoder.py :mkdirp yes
+import torch.nn as nn
+
+class AutoSamEncoder(nn.Module):
+    def __init__(self ):
+        super(AutoSamEncoder, self).__init__()
+
+    def forward(self, x):
+        return 0
+#+end_src
+* Check inference time
+#+begin_src python :tangle ~/projects/autosam/utils.py :mkdirp yes
+import os
+import numpy as np
 import cv2
-import os
-from PIL import Image
-import numpy as np
-from torch.utils.data import Dataset
-import random
 import torch
+import argparse
 import pickle
-#+end_src
-** Dataset class
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
-class MediScanSegDataset(Dataset):
-  def __init__(self,
-               img_dir,
-               img_paths,
-               transform=None,
-               resize_dim=256,
-               model_type="base"):
-    self.img_paths = img_paths
-    self.img_dir = img_dir
-    self.resize_dim=resize_dim
-    self.transform=transform
-    
-  def __len__(self):
-    return len(self.img_paths)
-
-  def __getitem__(self,idx):
-    img_path = os.path.join(self.img_dir, self.img_paths[idx])
-    mask_path = img_path.replace("images", "masks")
-    id_ = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
-
-    img = cv2.imread(img_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = Image.fromarray(img)
-    mask = cv2.imread(mask_path)
-    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-    mask[mask<200]=0
-    mask[mask>=200]=255
-    mask = Image.fromarray(mask)
-    if self.transform:
-       img = self.transform(img)
-       mask = self.transform(mask)
-    return {"img": np.array(img), "mask": mask, "id":id_}
-
-#+end_src
-** Setup transformations
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
-def get_transforms(resize_dim):
-    transform_train = T.Compose([
-        T.Resize((resize_dim, resize_dim)),
-        T.ColorJitter(brightness=0.2,
-                               contrast=0.2,
-                               saturation=0.2,
-                               hue=0.1),
-        T.RandomHorizontalFlip(),
-        T.RandomAffine(5, scale=(0.75, 1.25)),
-        T.ToTensor(),
-    ])
-    transform_test = T.Compose([
-        T.Resize((resize_dim, resize_dim)),
-        T.ToTensor(),
-    ])
-    return transform_train, transform_test
-#+end_src
-** Create torch datasets
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
-def get_mediscan_dataset(img_dir, debug=False):
-    imgs = {}
-    for label in os.listdir(img_dir):
-        imgs[label] = [os.path.join(label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
-
-    train = []
-    test = []
-    val = []
-
-    for label in imgs:
-        random.shuffle(imgs[label])
-        train_split = imgs[label][:int(0.9*(len(imgs[label])))]
-        train += train_split
-        tmp = imgs[label][int(0.9*(len(imgs[label]))):]
-        random.shuffle(tmp)
-        tmp_val = tmp[:int(0.5*(len(tmp)))]
-        tmp_test = tmp[int(0.5*(len(tmp))):]
-        val += tmp_val
-        test += tmp_test
-
-    random.shuffle(train)
-    random.shuffle(val)
-    random.shuffle(test)
-    with open('train.pkl', 'wb') as f:
-        pickle.dump(train, f)
-    with open('val.pkl', 'wb') as f:
-        pickle.dump(val, f)
-    with open('test.pkl', 'wb') as f:
-        pickle.dump(test, f)
-
-    print(f'Train: {len(train)}; Val: {len(val)}; Test: {len(test)}')
-
-    if debug:
-       train = val[:10]
-       val = train
-
-    train_ts, test_ts = get_transforms(256)
-    train_ds = MediScanSegDataset(img_dir, train, transform=train_ts)
-    val_ds = MediScanSegDataset(img_dir, val, transform=test_ts)
-    test_ds = MediScanSegDataset(img_dir, test, transform=test_ts)
-    return train_ds, val_ds, test_ds
-#+end_src
-
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/dataset.py :mkdirp yes
-if __name__ == "__main__":
-    from torch.utils.data import DataLoader
-    import pickle
-    with open('val.pkl', 'rb') as f:
-        val = pickle.load(f)
-
-    val_dataset = MediScanSegDataset(val)
-    val_dataloader = DataLoader(dataset=val_dataset, batch_size=2, shuffle=False)
-    x = next(iter(val_dataloader))
-    img = x["img"]
-    mask = x["mask"]
-    print(type(img), img.size(), img.max())
-    print(type(mask), mask.size(), mask.max())
-#+end_src
-* Model.py
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/model.py :mkdirp yes
-import torch.nn as nn
-import torch
-
-import os
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
-class AdaptationMismatch(Exception): pass
-
-
-class Flatten(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return x.view(x.data.size(0), -1)
-
-
-class CombConvLayer(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel=1, stride=1, dropout=0.1, bias=False):
-        super().__init__()
-        self.add_module('layer1', ConvLayer(in_channels, out_channels, kernel))
-        self.add_module('layer2', DWConvLayer(out_channels, out_channels, stride=stride))
-
-    def forward(self, x):
-        return super().forward(x)
-
-
-class DWConvLayer(nn.Sequential):
-    def __init__(self, in_channels, out_channels, stride=1, bias=False):
-        super().__init__()
-        out_ch = out_channels
-
-        groups = in_channels
-        kernel = 3
-        # print(kernel, 'x', kernel, 'x', out_channels, 'x', out_channels, 'DepthWise')
-
-        self.add_module('dwconv', nn.Conv2d(groups, groups, kernel_size=3,
-                                            stride=stride, padding=1, groups=groups, bias=bias))
-        self.add_module('norm', nn.BatchNorm2d(groups))
-
-    def forward(self, x):
-        return super().forward(x)
-
-
-class ConvLayer(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel=3, stride=1, dropout=0.1, bias=False):
-        super().__init__()
-        out_ch = out_channels
-        groups = 1
-        # print(kernel, 'x', kernel, 'x', in_channels, 'x', out_channels)
-        self.add_module('conv', nn.Conv2d(in_channels, out_ch, kernel_size=kernel,
-                                          stride=stride, padding=kernel // 2, groups=groups, bias=bias))
-        self.add_module('norm', nn.BatchNorm2d(out_ch))
-        self.add_module('relu', nn.ReLU6(True))
-
-    def forward(self, x):
-        return super().forward(x)
-
-
-class HarDBlock(nn.Module):
-    def get_link(self, layer, base_ch, growth_rate, grmul):
-        if layer == 0:
-            return base_ch, 0, []
-        out_channels = growth_rate
-        link = []
-        for i in range(10):
-            dv = 2 ** i
-            if layer % dv == 0:
-                k = layer - dv
-                link.append(k)
-                if i > 0:
-                    out_channels *= grmul
-        out_channels = int(int(out_channels + 1) / 2) * 2
-        in_channels = 0
-        for i in link:
-            ch, _, _ = self.get_link(i, base_ch, growth_rate, grmul)
-            in_channels += ch
-        return out_channels, in_channels, link
-
-    def get_out_ch(self):
-        return self.out_channels
-
-    def __init__(self, in_channels, growth_rate, grmul, n_layers, keepBase=False, residual_out=False, dwconv=False):
-        super().__init__()
-        self.keepBase = keepBase
-        self.links = []
-        layers_ = []
-        self.out_channels = 0  # if upsample else in_channels
-        for i in range(n_layers):
-            outch, inch, link = self.get_link(i + 1, in_channels, growth_rate, grmul)
-            self.links.append(link)
-            use_relu = residual_out
-            if dwconv:
-                layers_.append(CombConvLayer(inch, outch))
-            else:
-                layers_.append(ConvLayer(inch, outch))
-
-            if (i % 2 == 0) or (i == n_layers - 1):
-                self.out_channels += outch
-        # print("Blk out =",self.out_channels)
-        self.layers = nn.ModuleList(layers_)
-
-    def forward(self, x):
-        layers_ = [x]
-
-        for layer in range(len(self.layers)):
-            link = self.links[layer]
-            tin = []
-            for i in link:
-                tin.append(layers_[i])
-            if len(tin) > 1:
-                x = torch.cat(tin, 1)
-            else:
-                x = tin[0]
-            out = self.layers[layer](x)
-            layers_.append(out)
-
-        t = len(layers_)
-        out_ = []
-        for i in range(t):
-            if (i == 0 and self.keepBase) or \
-                    (i == t - 1) or (i % 2 == 1):
-                out_.append(layers_[i])
-        out = torch.cat(out_, 1)
-        return out
-
-
-class HarDNet(nn.Module):
-    def __init__(self, depth_wise=False, arch=85, pretrained=True, weight_path='', out=1):
-        super().__init__()
-        first_ch = [32, 64]
-        second_kernel = 3
-        max_pool = True
-        grmul = 1.7
-        drop_rate = 0.1
-
-        # HarDNet68
-        ch_list = [128, 256, 320, 640, 1024]
-        gr = [14, 16, 20, 40, 160]
-        n_layers = [8, 16, 16, 16, 4]
-        downSamp = [1, 0, 1, 1, 0]
-
-        if arch == 85:
-            # HarDNet85
-            first_ch = [48, 96]
-            ch_list = [192, 256, 320, 480, 720, 1280]
-            gr = [24, 24, 28, 36, 48, 256]
-            n_layers = [8, 16, 16, 16, 16, 4]
-            downSamp = [1, 0, 1, 0, 1, 0]
-            drop_rate = 0.2
-        elif arch == 39:
-            # HarDNet39
-            first_ch = [24, 48]
-            ch_list = [96, 320, 640, 1024]
-            grmul = 1.6
-            gr = [16, 20, 64, 160]
-            n_layers = [4, 16, 8, 4]
-            downSamp = [1, 1, 1, 0]
-
-        if depth_wise:
-            second_kernel = 1
-            max_pool = False
-            drop_rate = 0.05
-
-        blks = len(n_layers)
-        self.base = nn.ModuleList([])
-
-        # First Layer: Standard Conv3x3, Stride=2
-        self.base.append(
-            ConvLayer(in_channels=3, out_channels=first_ch[0], kernel=3,
-                      stride=2, bias=False))
-
-        # Second Layer
-        self.base.append(ConvLayer(first_ch[0], first_ch[1], kernel=second_kernel))
-
-        # Maxpooling or DWConv3x3 downsampling
-        if max_pool:
-            self.base.append(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
-        else:
-            self.base.append(DWConvLayer(first_ch[1], first_ch[1], stride=2))
-
-        # Build all HarDNet blocks
-        ch = first_ch[1]
-        for i in range(blks):
-            blk = HarDBlock(ch, gr[i], grmul, n_layers[i], dwconv=depth_wise)
-            ch = blk.get_out_ch()
-            self.base.append(blk)
-
-            if i == blks - 1 and arch == 85:
-                self.base.append(nn.Dropout(0.1))
-
-            self.base.append(ConvLayer(ch, ch_list[i], kernel=1))
-            ch = ch_list[i]
-            if downSamp[i] == 1:
-                if max_pool:
-                    self.base.append(nn.MaxPool2d(kernel_size=2, stride=2))
-                else:
-                    self.base.append(DWConvLayer(ch, ch, stride=2))
-
-        ch = ch_list[blks - 1]
-        self.base.append(
-            nn.Sequential(
-                nn.AdaptiveAvgPool2d((1, 1)),
-                Flatten(),
-                nn.Dropout(drop_rate),
-                nn.Linear(ch, 1000)))
-
-        # print(self.base)
-
-        if pretrained:
-            if hasattr(torch, 'hub'):
-
-                if arch == 68 and not depth_wise:
-                    checkpoint = 'https://ping-chao.com/hardnet/hardnet68-5d684880.pth'
-                elif arch == 85 and not depth_wise:
-                    checkpoint = 'https://ping-chao.com/hardnet/hardnet85-a28faa00.pth'
-                elif arch == 68 and depth_wise:
-                    checkpoint = 'https://ping-chao.com/hardnet/hardnet68ds-632474d2.pth'
-                else:
-                    checkpoint = 'https://ping-chao.com/hardnet/hardnet39ds-0e6c6fa9.pth'
-
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                self.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint, progress=False, map_location=device))
-
-            else:
-                postfix = 'ds' if depth_wise else ''
-                weight_file = '%shardnet%d%s.pth' % (weight_path, arch, postfix)
-                if not os.path.isfile(weight_file):
-                    print(weight_file, 'is not found')
-                    exit(0)
-                weights = torch.load(weight_file)
-                self.load_state_dict(weights)
-
-            postfix = 'DS' if depth_wise else ''
-            print('ImageNet pretrained weights for HarDNet%d%s is loaded' % (arch, postfix))
-            if arch == 39:
-                self.features = 640
-                # self.base = self.base[0:14]
-                self.base = self.base[0:11]
-            if arch == 68:
-                self.features = 1024
-                self.base = self.base[0:16]
-            if arch == 85:
-                self.features = 1280
-                self.base = self.base[0:19]
-            if arch == 39:
-                self.full_features = [48, 96, 320, 640, 1024]
-                self.list = [1, 4, 7, 10, 13]
-            if arch == 68:
-                self.full_features = [64, 128, 320, 640, 1024]
-                self.list = [1, 4, 9, 12, 15]
-            if arch == 85:
-                self.full_features = [96, 192, 320, 720, 1280]
-                self.list = [1, 4, 9, 14, 18]
-
-    def forward(self, x):
-        for inx, layer in enumerate(self.base):
-            x = layer(x)
-            if inx == self.list[0]:
-                x2 = x
-                if inx == len(self.base) - 1:
-                    return x2
-            elif inx == self.list[1]:
-                x4 = x
-                if inx == len(self.base) - 1:
-                    return x2, x4
-            elif inx == self.list[2]:
-                x8 = x
-                if inx == len(self.base) - 1:
-                    return x2, x4, x8
-            elif inx == self.list[3]:
-                x16 = x
-                if inx == len(self.base) - 1:
-                    return x2, x4, x8, x16
-            elif inx == self.list[4]:
-                x32 = x
-                if inx == len(self.base) - 1:
-                    return x2, x4, x8, x16, x32
-
-class UpBlockSkip(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, func=None, drop=0):
-        super(UpBlockSkip, self).__init__()
-        P = int((kernel_size - 1) / 2)
-        self.Upsample = nn.Upsample(scale_factor=2, mode='bilinear')
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=P)
-        self.conv1_drop = nn.Dropout2d(drop)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, stride=1, padding=P)
-        self.conv2_drop = nn.Dropout2d(drop)
-        self.BN = nn.BatchNorm2d(out_channels)
-        self.func = func
-
-    def forward(self, x_in, x_up):
-        x = self.Upsample(x_in)
-        x_cat = torch.cat((x, x_up), 1)
-        x1 = self.conv2_drop(self.conv2(self.conv1_drop(self.conv1(x_cat))))
-        if self.func == 'tanh':
-            return F.tanh(self.BN(x1))
-        elif self.func == 'relu':
-            return F.leaky_relu(self.BN(x1))
-        elif self.func == 'sigmoid':
-            return F.sigmoid(self.BN(x1))
-        else:
-            return x1
-
-class CNNBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, drop=0):
-        super(CNNBlock, self).__init__()
-        P = int((kernel_size-1)/2)
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=P)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, stride=1, padding=P)
-        self.conv1_drop = nn.Dropout2d(drop)
-        self.conv2_drop = nn.Dropout2d(drop)
-        self.BN1 = nn.BatchNorm2d(out_channels)
-        self.BN2 = nn.BatchNorm2d(out_channels)
-
-    def forward(self, x_in, inx=-1):
-        x = self.conv1_drop(self.conv1(x_in))
-        x = F.relu(self.BN1(x))
-        x_out = self.conv2(x)
-        return x_out
-
-class SmallDecoder(nn.Module):
-    def __init__(self, full_features, out):
-        super(SmallDecoder, self).__init__()
-        self.up1 = UpBlockSkip(full_features[3] + full_features[2], full_features[2],
-                               func='relu', drop=0)
-        self.up2 = UpBlockSkip(full_features[2] + full_features[1], full_features[1],
-                               func='relu', drop=0)
-        self.final = CNNBlock(full_features[1], out, kernel_size=3, drop=0)
-
-    def forward(self, x):
-        z = self.up1(x[3], x[2])
-        z = self.up2(z, x[1])
-        out = F.tanh(self.final(z))
-        # out = self.final(z)
-        return out
-
-class ModelEmb(nn.Module):
-    def __init__(self, depth_wise=False, arch=85):
-        super(ModelEmb, self).__init__()
-        self.backbone = HarDNet(depth_wise=depth_wise, arch=arch)
-        d, f = self.backbone.full_features, self.backbone.features
-        self.decoder = SmallDecoder(d, out=256)
-        for param in self.backbone.parameters():
-            param.requires_grad = True
-
-    def forward(self, img, size=None):
-        z = self.backbone(img)
-        dense_embeddings = self.decoder(z)
-        dense_embeddings = F.interpolate(dense_embeddings, (64, 64), mode='bilinear', align_corners=True)
-        return dense_embeddings
-
-if __name__ == "__main__":
-    model = ModelEmb()
-    x = torch.randn(1, 3, 256, 256)
-    o = model(x)
-    print(type(o), o.size(), o.dtype, o.max())
-    # for i in o:
-    #    print(i.size())
-#+end_src
-* Train
-** Necessary imports
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score
-from statistics import mean
-import wandb
-import torch
-import torch.nn as nn
-from model import ModelEmb
-from torch.utils.data import DataLoader
-from dataset import get_mediscan_dataset
-import torch.nn.functional as F
-from torch.optim import Adam
-import monai
-from monai.networks.utils import one_hot
-from tqdm import tqdm
-from torchvision.utils import save_image
+from models.model_single import ModelEmb
 from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
-os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
+from segment_anything.utils.transforms import ResizeLongestSide
+from torchvision.transforms import v2 as T
+import random
 
-#+end_src
-** Check for GPU
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-if not torch.cuda.is_available():
-   raise Exception("GPU not available")
-else:
-   device = "cuda"
+parser = argparse.ArgumentParser(description='Description of your program')
+parser.add_argument('-lr', '--learning_rate', default=0.0003, help='learning_rate', required=False)
+parser.add_argument('-bs', '--Batch_size', default=2, help='batch_size', required=False)
+parser.add_argument('-epoches', '--epoches', default=200, help='number of epoches', required=False)
+parser.add_argument('-nW', '--nW', default=0, help='evaluation iteration', required=False)
+parser.add_argument('-nW_eval', '--nW_eval', default=0, help='evaluation iteration', required=False)
+parser.add_argument('-WD', '--WD', default=1e-4, help='evaluation iteration', required=False)
+parser.add_argument('-task', '--task', default='monu', help='evaluation iteration', required=False)
+parser.add_argument('-depth_wise', '--depth_wise', default=False, help='image size', required=False)
+parser.add_argument('-order', '--order', default=85, help='image size', required=False)
+parser.add_argument('-Idim', '--Idim', default=256, help='image size', required=False)
+parser.add_argument('-rotate', '--rotate', default=22, help='image size', required=False)
+parser.add_argument('-scale1', '--scale1', default=0.75, help='image size', required=False)
+parser.add_argument('-scale2', '--scale2', default=1.25, help='image size', required=False)
+args = vars(parser.parse_args())
+# os.makedirs('results', exist_ok=True)
+# folder = open_folder('results')
+# args['folder'] = folder
+# args['path'] = os.path.join('results',
+#                             'gpu' + folder,
+#                             'net_last.pth')
+# args['path_best'] = os.path.join('results',
+#                                     'gpu' + folder,
+#                                     'net_best.pth')
+# args['vis_folder'] = os.path.join('results', 'gpu' + args['folder'], 'vis')
+# os.mkdir(args['vis_folder'])
+sam_args = {
+    'sam_checkpoint': "/home/lfz/projects/data/sam_ckpts/sam_vit_b.pth",
+    'model_type': "vit_b",
+    'generator_args': {
+        'points_per_side': 8,
+        'pred_iou_thresh': 0.95,
+        'stability_score_thresh': 0.7,
+        'crop_n_layers': 0,
+        'crop_n_points_downscale_factor': 2,
+        'min_mask_region_area': 0,
+        'point_grids': None,
+        'box_nms_thresh': 0.7,
+    },
+    'gpu_id': 0,
+}
+def read_image(img_dir, img_path):
+   file_path = os.path.join(img_dir, img_path)
+   img = cv2.cvtColor(cv2.imread(file_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+   img = transform_test(img)
+   img = sam_trans.apply_image_torch(img)
+   img = sam_trans.preprocess(img)
+   img = img.unsqueeze(0)
+   img = img.to(device=device)
+   return img
 
-#+end_src
-** Hyper-parameters
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-lr = 1e-4
-train_batch_size = 2
-val_batch_size = 1
-num_epochs = 100
-img_dir = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
-debug = False
-if debug:
-   num_epochs = 1
-#+end_src
-** Setup dataloaders
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-train_ds, val_ds, test_ds = get_mediscan_dataset(img_dir, debug=debug)
-train_dataloader = DataLoader(dataset=train_ds, batch_size=train_batch_size, shuffle=True)
-val_dataloader = DataLoader(dataset=val_ds, batch_size=val_batch_size, shuffle=False)
-test_dataloader = DataLoader(dataset=test_ds, batch_size=val_batch_size, shuffle=False)
+def run_autosam(img, model, sam):
+   dense_embeddings = model(img)
+   image_embeddings = sam.image_encoder(img)
+   pred, iou_predictions = sam.mask_decoder(
+      image_embeddings=image_embeddings,
+      image_pe=sam.prompt_encoder.get_dense_pe(),
+      sparse_prompt_embeddings=sparse_embeddings_none,
+      dense_prompt_embeddings=dense_embeddings,
+      multimask_output=False)
+   return pred
 
-#+end_src
-** Load pre-trained SAM model
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-model_type = "vit_b"
-ckpt_path = "/home/lfz/projects/ultrasound/datasets/sam_ckpts/sam_vit_b_01ec64.pth"
-sam = sam_model_registry[model_type](checkpoint=ckpt_path)
-sam.to(device)
+img_dir = "/home/lfz/projects/data/mediscan-seg"
+with open("test.pkl", "rb") as f:
+   test = pickle.load(f)
+with open("val.pkl", "rb") as f:
+   val = pickle.load(f)
 
-for name, param in sam.named_parameters():
-   param.requires_grad_(False)
+test = val + test
 
-#+end_src
-** Load self-prompt encoder
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-model_g = ModelEmb()
-model_g.to(device)
-#+end_src
-** Optimizer and Loss
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-optimizer = Adam(model_g.parameters(), lr=lr)
-dice_loss = monai.losses.DiceCELoss()
-bce_loss = nn.BCEWithLogitsLoss()
-#+end_src
-** Wandb for logging
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-wandb.login()
-wandb.init(
-    project="sam",
-    config={
-        "lr": 1e-5,
-        "epochs": num_epochs,
-    },)
+# load checkpoint
+ckpt_path = "/home/lfz/projects/autosam/results/gpu1/net_best.pth"
+model = torch.load(ckpt_path)
+device = torch.device("cuda")
+model.to(device)
+model.eval()
 
-#+end_src
-** Learning loop
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/train.py :mkdirp yes
-os.makedirs("results", exist_ok=True)
-os.makedirs("ckpts", exist_ok=True)
-for epoch in range(num_epochs):
-    print(f'EPOCH: {epoch}')
-    epoch_losses = []
-    # keep model_g in train mode for train loop
-    model_g.train()
-    for batch in tqdm(train_dataloader):
-        # extract images
-        imgs = batch["img"]
-        imgs = imgs.to(device)
-        masks = batch["mask"]
-        masks = masks.to(device)
-        # generate prompt embedding from input image itself
-        img_prompt = model_g(imgs)
+# load SAM
+sam = sam_model_registry[sam_args['model_type']](checkpoint=sam_args['sam_checkpoint'])
+sam.to(device=device)
+sam.eval()
+sam_trans = ResizeLongestSide(sam.image_encoder.img_size)
+sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
 
-        input_images = torch.stack([sam.preprocess(x) for x in imgs], dim=0)
-        sam.eval()
-        with torch.no_grad():
-            image_embeddings = sam.image_encoder(input_images)
-            sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
-            preds, iou_pred = sam.mask_decoder(
-                image_embeddings=image_embeddings,
-                image_pe=sam.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings_none,
-                dense_prompt_embeddings=img_prompt,
-                multimask_output=False,
-            )
+Idim = 256
+transform_test = T.Compose([
+    T.ToPILImage(),
+    T.Resize((Idim, Idim)),
+    T.ToTensor(),
+])
 
-        
-        preds = torch.sigmoid(preds)
-        preds[preds<=0.5] = 0.0
-        preds[preds>0.5] = 1.0
-        preds = one_hot(preds[:, None, ...], num_classes=2)
-        preds = preds.squeeze()
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+repetitions = 300
+timings=np.zeros((repetitions,1))
 
-        masks[masks<=0.5] = 0.0
-        masks[masks>0.5] = 1.0
-        masks = one_hot(masks[:, None, ...], num_classes=2)
-        masks = masks.squeeze()
+# GPU Warm-UP
+print("GPU warming up...")
+for img_path in test[:10]:
+   img = read_image(img_dir, img_path)
+   with torch.no_grad():
+      pred = run_autosam(img, model, sam)
+print("Done!")
 
-        preds.requires_grad_()
-        dice = dice_loss(preds, masks)
-        bce = bce_loss(preds, masks)
-        # loss = bce + dice
-        loss = dice
-
-        # backward pass (compute gradients of parameters w.r.t. loss)
-        optimizer.zero_grad()
-        loss.backward()
-
-        # optimize
-        optimizer.step()
-        epoch_losses.append(loss.item())
-        wandb.log({"Train Loss batch": loss.item()})
-
-    print(f'Train loss epoch: {mean(epoch_losses)}')
-    wandb.log({"Train Loss epoch": mean(epoch_losses)})
-
-    epoch_losses = []
-    iou = []
-    acc = []
-    recall = []
-    precision = []
-    f1 = []
-    for batch in tqdm(val_dataloader):
-        # extract images
-        imgs = batch["img"]
-        imgs = imgs.to(device)
-        masks = batch["mask"]
-        masks = masks.to(device)
-
-        input_images = torch.stack([sam.preprocess(x) for x in imgs], dim=0)
-        model_g.eval()
-        with torch.no_grad():
-            # generate prompt embedding from input image itself
-            img_prompt = model_g(imgs)
-            image_embeddings = sam.image_encoder(input_images)
-            sparse_embeddings_none, dense_embeddings_none = sam.prompt_encoder(points=None, boxes=None, masks=None)
-            preds, iou_pred = sam.mask_decoder(
-                image_embeddings=image_embeddings,
-                image_pe=sam.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings_none,
-                dense_prompt_embeddings=img_prompt,
-                multimask_output=False,
-            )
-
-
-        preds = torch.sigmoid(preds)
-        preds[preds<=0.5] = 0.0
-        preds[preds>0.5] = 1.0
-        preds_onehot = one_hot(preds[:, None, ...], num_classes=2)
-        preds_onehot = preds_onehot.squeeze()
-
-        masks[masks<=0.5] = 0.0
-        masks[masks>0.5] = 1.0
-        masks_onehot = one_hot(masks[:, None, ...], num_classes=2)
-        masks_onehot = masks_onehot.squeeze()
-
-        dice = dice_loss(preds, masks)
-        bce = bce_loss(preds, masks)
-        # loss = bce + dice
-        loss = dice
-
-        epoch_losses.append(loss.item())
-
-        # convert soft mask to hard mask
-        probs = preds.cpu().numpy().squeeze()
-        probs = probs.astype(np.uint8)
-
-        masks = masks.cpu().numpy().squeeze()
-        masks = masks.astype(np.uint8)
-        img_raw = imgs.squeeze(0).cpu().numpy()
-        img_raw = np.transpose(img_raw, (1, 2, 0))
-
-        intersection = np.logical_and(probs, masks)
-        union = np.logical_or(probs, masks)
-        iou_score = np.sum(intersection) / np.sum(union)
-        iou.append(iou_score)
-
-        y_true = masks.flatten()
-        y_pred = probs.flatten()
-        acc.append(accuracy_score(y_true, y_pred))
-        recall.append(recall_score(y_true, y_pred))
-        precision.append(precision_score(y_true, y_pred))
-        f1.append(f1_score(y_true, y_pred))
-
-        overlay = img_raw.copy()
-        mask = np.zeros(img_raw.shape)
-        medsam_seg = probs.astype(bool)
-        mask[medsam_seg] = [0,0,1.0]
-        plt.figure()
-        plt.imshow(img_raw)
-        plt.imshow(mask, alpha=0.5)
-        plt.savefig(os.path.join("results", batch["id"][0]+"png"), bbox_inches='tight')
-        plt.close()
-    print(f'Val loss epoch: {mean(epoch_losses)}')
-    wandb.log({"Val loss epoch": mean(epoch_losses)})
-    wandb.log({"iou": mean(iou)})
-    wandb.log({"acc": mean(acc)})
-    wandb.log({"precision": mean(precision)})
-    wandb.log({"recall": mean(recall)})
-    wandb.log({"f1": mean(f1)})
-
-# Save the model's state dictionary to a file
-torch.save(model_g.state_dict(), os.path.join("ckpts", "autosam_finetuned.pth"))
-#+end_src
-** Testing
-#+begin_src python :tangle ~/projects/ultrasound/segmentation/autosam/test1.py :mkdirp yes
-from monai.losses.dice import *  # NOQA
-import torch
-from monai.losses.dice import DiceLoss
-
-B, C, H, W = 7, 3, 256, 256
-input = torch.rand(B, C, H, W)
-print(input.size())
-
-target_idx = torch.randint(low=0, high=3, size=(B, H, W)).long()
-print(target_idx.size())
-target = one_hot(target_idx[:, None, ...], num_classes=C)
-print(target.size())
-# self = DiceLoss(reduction='none')
-# loss = self(input, target)
-# assert np.broadcast_shapes(loss.shape, input.shape) == input.shape
+N = len(test)
+# MEASURE PERFORMANCE
+with torch.no_grad():
+  for rep in range(repetitions):
+     idx = random.randint(0, N-1)
+     img = read_image(img_dir, test[idx])
+     starter.record()
+     pred = run_autosam(img, model, sam)
+     ender.record()
+     # WAIT FOR GPU SYNC
+     torch.cuda.synchronize()
+     curr_time = starter.elapsed_time(ender)
+     timings[rep] = curr_time
+     print(rep, curr_time)
+mean_syn = np.sum(timings) / repetitions
+std_syn = np.std(timings)
+print(mean_syn, std_syn)
 #+end_src

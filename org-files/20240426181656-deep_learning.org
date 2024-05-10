@@ -7,3 +7,57 @@
 * [[id:edda3e6f-d726-48b4-97ab-23d2e86cbf21][Shallow Neural Networks]] 
 * [[id:0f8b7d24-d097-4785-89c7-ed550415f0a7][Transformer]] 
 * [[id:59a45f0f-243e-41f4-8621-400a8bc50b5f][Segmentation]] 
+* Measure inference time
+** Asynchronous execution
+If you use python's time functionality- due to the asynchronous nature of the GPU, the line of code that stops the timing will be executed before the GPU process finishes. As a result, the timing will be inaccurate or irrelevant to the actual inference time.
+** GPU-warm up
+Applications that trigger GPU initialization can incur up to 3 seconds of latency, due to the scrubbing behavior of the error-correcting code. 
+
+#+begin_src python
+model = EfficientNet.from_pretrained(‘efficientnet-b0’)
+device = torch.device(“cuda”)
+model.to(device)
+dummy_input = torch.randn(1, 3,224,224,dtype=torch.float).to(device)
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+repetitions = 300
+timings=np.zeros((repetitions,1))
+#GPU-WARM-UP
+for _ in range(10):
+   _ = model(dummy_input)
+# MEASURE PERFORMANCE
+with torch.no_grad():
+  for rep in range(repetitions):
+     starter.record()
+     _ = model(dummy_input)
+     ender.record()
+     # WAIT FOR GPU SYNC
+     torch.cuda.synchronize()
+     curr_time = starter.elapsed_time(ender)
+     timings[rep] = curr_timemean_syn = np.sum(timings) / repetitions
+std_syn = np.std(timings)
+print(mean_syn)
+
+#+end_src
+** Throughput
+- Number of instances a network can process in a unit of time (eg, 1 second) = (number of batches X batch size)/(total time in seconds).
+
+Unlike latency, which involves the processing of a single instance, to achieve maximal throughput we would like to process in parallel as many instances as possible. ie optimally maximum batch size.
+
+#+begin_src python
+model = EfficientNet.from_pretrained(‘efficientnet-b0’)
+device = torch.device(“cuda”)
+model.to(device)
+dummy_input = torch.randn(optimal_batch_size, 3,224,224, dtype=torch.float).to(device)repetitions=100
+total_time = 0
+with torch.no_grad():
+  for rep in range(repetitions):
+     starter, ender = torch.cuda.Event(enable_timing=True),          torch.cuda.Event(enable_timing=True)
+     starter.record()
+     _ = model(dummy_input)
+     ender.record()
+     torch.cuda.synchronize()
+     curr_time = starter.elapsed_time(ender)/1000
+     total_time += curr_time
+Throughput = (repetitions*optimal_batch_size)/total_time
+print(‘Final Throughput:’,Throughput)
+#+end_src
