@@ -5,10 +5,18 @@
 #+STARTUP: latexpreview
 
 
-Let length of sentence be $s$.
+Let number of words in the sentence be $s$.
 Let length of embedding vector be $e$.
 
 * Encoder
+
+** Positional encoding
+Each vector should have info regarding it's position within the sentence.
+
+\begin{equation*}
+X = X + P
+\end{equation*}
+
 ** Self Attention
 Then input word embedding matrix would be $\underset{s\times e}{X}$.
 Let length of key, query and value vectors as $h$.
@@ -78,23 +86,27 @@ z = LayerNorm(r+z)
 \end{equation*}
 
 * Decoder
-
 ** Self Attention
 
-$\underset{s\times e}{X} = \underset{s\times e}{M} + \underset{s\times e}{X}$
+\begin{equation*}
+O = O + P
+\end{equation*}
 
-where M is a mask matrix with upper triangular elements as $-inf$.
+
+$\underset{s\times e}{O} = \underset{s\times e}{M} + \underset{s\times e}{O}$
+
+where M is a look ahead mask matrix with upper triangular elements as $-inf$.
 
 \begin{equation*}
-\underset{s\times h}{Q_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^Q}
+\underset{s\times h}{Q_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^Q}
 \end{equation*}
 
 \begin{equation*}
-\underset{s\times h}{K_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^K}
+\underset{s\times h}{K_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^K}
 \end{equation*}
 
 \begin{equation*}
-\underset{s\times h}{V_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^V}
+\underset{s\times h}{V_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^V}
 \end{equation*}
 
 
@@ -112,7 +124,6 @@ where M is a mask matrix with upper triangular elements as $-inf$.
 \underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K_d}, \underset{s\times h}{V_d})
 \end{equation*}
 
-
 ** Feed forward neural network
 \begin{equation*}
 \underset{1\times h}{r} = NN{(\underset{1\times h}{z})
@@ -123,6 +134,11 @@ $\forall r_i , i=\{1,2,..s\}$ parallely with same $NN$.
 \begin{equation*}
 z = LayerNorm(r+z)
 \end{equation*}
+
+* Training
+We prepend and append special tokens to the input sentence of encoder, ie <SOS> and <EOS>.
+Input of decoder is the target output with <SOS> preppended. If the number of words are smaller we pad it to equalize the sequence length of the model.
+Output target sentence will be appended by <EOS>.
 
 
 * [[http://jalammar.github.io/illustrated-transformer/][Illustrated Transformer]]
