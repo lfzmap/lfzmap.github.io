@@ -5,141 +5,88 @@
 #+STARTUP: latexpreview
 
 
-Let number of words in the sentence be $s$.
-Let length of embedding vector be $e$.
 
-* Encoder
+Models handling sequential data were prominantly recurrent neural networks and convolutional neural networks, including a encoder-decoder. seq2seq passing attention information betweek encoder and decoder were performing better. This work completely removes RNN and CNN, instead built using attention mechanism only.
 
-** Positional encoding
-Each vector should have info regarding it's position within the sentence.
+RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. 
 
-\begin{equation*}
-X = X + P
-\end{equation*}
+* Model Architecture
+** Necessary imports
+#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
+import torch
+import torch.nn as nn
+#+end_src
+** Overview
+Transformer has an encoder-decoder structure.
 
-** Self Attention
-Then input word embedding matrix would be $\underset{s\times e}{X}$.
-Let length of key, query and value vectors as $h$.
+[[./img/transformer_architecture.png]]
 
-\begin{equation*}
-\underset{s\times h}{Q_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^Q}
-\end{equation*}
+The encoder maps an input sequence $\vec{x}= (x_1, x_2,..,x_n)$ to a representation $\vec{z} = (z_1,z_2,..,z_n)$.
 
-\begin{equation*}
-\underset{s\times h}{K_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^K}
-\end{equation*}
+Given this $\vec{z}$ the decoder then generates output $\vec{y}=(y_1,y_2,..,y_m)$ one element at a time. Transformer is *Auto-Regressive*, as in the decoder will take the previous output element as additional input for the next step.
 
-\begin{equation*}
-\underset{s\times h}{V_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^V}
-\end{equation*}
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+import torch.nn as nn
 
-Where $i = \{1,2,..H\}$.
-$H$ is the number of heads present in the multihead attention layer.
+class Transformer(nn.Module):
+    def __init__(self ):
+        super(Transformer, self).__init__()
+        self.encoder = Encoder()
+        self.decoder = Decoder()
 
-\begin{equation*}
-\underset{s\times s}{S_i} = softmax(\frac{\underset{s\times h}{Q_i}\times \underset{h\times s}{K_i^T}}{\sqrt{h}})
-\end{equation*}
+    def forward(self, x):
+        z = self.encoder(x)
+        y = self.decoder(z)
+        return y
+#+end_src
 
-\begin{equation*}
-\underset{s\times h}{Z_i} = \underset{s\times s}{S_i}\times \underset{s\times h}{V_i}
-\end{equation*}
+** Encoder Stack
+Stack is made of six encoder blocks. Each block is made of a multiheaded self-attention and feed forward neural network. Every block has a residual connection over itself with a layer normalization after it.
 
-\begin{equation*}
-\underset{s\times H}{Z} = Z_1 || Z_2 ||...||Z_H
-\end{equation*}
+#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
+class Encoder(nn.Module):
+    def __init__(self, Nx=6):
+        super(Encoder, self).__init__()
+        self.stack = nn.ModuleList()
+        for i in range(Nx):
+            self.stack.append(EncoderBlock())        
 
-\begin{equation*}
-\underset{s\times h}{Z} = \underset{s\times H}{Z}\times \underset{H\times h}{W^Z}
-\end{equation*}
+    def forward(self, x):
+        out = self.stack(x)
+        return out
+#+end_src
+*** Encoder Block
+**** Multi-head attention
+***** Self-attention
+#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
+class SelfAttention(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(SelfAttention, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.W_Q = nn.Linear(self.input_dim, self.output_dim)
+        self.W_K = nn.Linear(self.input_dim, self.output_dim)
+        self.W_V = nn.Linear(self.input_dim, self.output_dim)
+        
+    def forward(self, x):
+        Q = self.W_Q(x)
+        K = self.W_K(x)
+        V = self.W_V(x)
+        print(Q.size())
+        return Q
 
-\begin{equation*}
-\underset{s\times h}{Z} = LayerNorm(X+Z)
-\end{equation*}
+if __name__ == "__main__":
+    d_model = 512
+    num_heads = 8
+    m = 128
+    batch = 4
+    x = torch.randn(batch, m, d_model)
+    a = SelfAttention(d_model, d_model//num_heads)
+    q = a(x)
+#+end_src
+**** Feed forward neural network
 
-
-In summary:
-
-\begin{equation*}
-
-\begin{equation*}
-\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K}, \underset{s\times h}{V})
-\end{equation*}
-
-
-** Feed forward neural network
-\begin{equation*}
-\underset{1\times h}{r} = NN{(\underset{1\times h}{z})
-\end{equation*}
-
-$\forall r_i , i=\{1,2,..s\}$ parallely with same $NN$.
-
-\begin{equation*}
-z = LayerNorm(r+z)
-\end{equation*}
-
-\begin{equation*}
-\underset{s\times h}{K_d} = \underset{s\times h}{R}\times \underset{h\times h}{W_d^K}$
-\end{equation*}
-
-\begin{equation*}
-\underset{s\times h}{V_d} = \underset{s\times h}{R}\times \underset{h\times h}{W_d^V}
-\end{equation*}
-
-* Decoder
-** Self Attention
-
-\begin{equation*}
-O = O + P
-\end{equation*}
-
-
-$\underset{s\times e}{O} = \underset{s\times e}{M} + \underset{s\times e}{O}$
-
-where M is a look ahead mask matrix with upper triangular elements as $-inf$.
-
-\begin{equation*}
-\underset{s\times h}{Q_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^Q}
-\end{equation*}
-
-\begin{equation*}
-\underset{s\times h}{K_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^K}
-\end{equation*}
-
-\begin{equation*}
-\underset{s\times h}{V_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^V}
-\end{equation*}
-
-
-\begin{equation*}
-\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K}, \underset{s\times h}{V})
-\end{equation*}
-
-** Encoder-Decoder Attention Layer
-
-\begin{equation*}
-\underset{s\times h}{Q_i} = {\underset{s\times h}{Z}}\times \underset{h\times h}{W_i^Q}
-\end{equation*}
-
-\begin{equation*}
-\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K_d}, \underset{s\times h}{V_d})
-\end{equation*}
-
-** Feed forward neural network
-\begin{equation*}
-\underset{1\times h}{r} = NN{(\underset{1\times h}{z})
-\end{equation*}
-
-$\forall r_i , i=\{1,2,..s\}$ parallely with same $NN$.
-
-\begin{equation*}
-z = LayerNorm(r+z)
-\end{equation*}
-
-* Training
-We prepend and append special tokens to the input sentence of encoder, ie <SOS> and <EOS>.
-Input of decoder is the target output with <SOS> preppended. If the number of words are smaller we pad it to equalize the sequence length of the model.
-Output target sentence will be appended by <EOS>.
-
+** Decoder Stack
 
 * [[http://jalammar.github.io/illustrated-transformer/][Illustrated Transformer]]
 ** Overview
@@ -243,3 +190,139 @@ The self attention layer can only look at earlier positions so we mask the futur
 Encoder-decoder attention layer use query matrix generated from previous layer, but the key and value matrix from the output of encoder stack.
 
 After the decoder stack there is a usual *decoder stack o/p->linear->logits->softmax* layers. The number with the highest prob indicate the corresponding word.
+* Summary
+Let number of words in the sentence be $s$.
+Let length of embedding vector be $e$.
+
+** Encoder
+
+*** Positional encoding
+Each vector should have info regarding it's position within the sentence.
+
+\begin{equation*}
+X = X + P
+\end{equation*}
+
+*** Self Attention
+Then input word embedding matrix would be $\underset{s\times e}{X}$.
+Let length of key, query and value vectors as $h$.
+
+\begin{equation*}
+\underset{s\times h}{Q_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^Q}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{K_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^K}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{V_i} = {\underset{s\times e}{X}}\times \underset{e\times h}{W_i^V}
+\end{equation*}
+
+Where $i = \{1,2,..H\}$.
+$H$ is the number of heads present in the multihead attention layer.
+
+\begin{equation*}
+\underset{s\times s}{S_i} = softmax(\frac{\underset{s\times h}{Q_i}\times \underset{h\times s}{K_i^T}}{\sqrt{h}})
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{Z_i} = \underset{s\times s}{S_i}\times \underset{s\times h}{V_i}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times H}{Z} = Z_1 || Z_2 ||...||Z_H
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{Z} = \underset{s\times H}{Z}\times \underset{H\times h}{W^Z}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{Z} = LayerNorm(X+Z)
+\end{equation*}
+
+
+In summary:
+
+\begin{equation*}
+
+\begin{equation*}
+\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K}, \underset{s\times h}{V})
+\end{equation*}
+
+*** Feed forward neural network
+\begin{equation*}
+\underset{1\times h}{r} = NN{(\underset{1\times h}{z})
+\end{equation*}
+
+$\forall r_i , i=\{1,2,..s\}$ parallely with same $NN$.
+
+\begin{equation*}
+z = LayerNorm(r+z)
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{K_d} = \underset{s\times h}{R}\times \underset{h\times h}{W_d^K}$
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{V_d} = \underset{s\times h}{R}\times \underset{h\times h}{W_d^V}
+\end{equation*}
+
+** Decoder
+*** Self Attention
+
+\begin{equation*}
+O = O + P
+\end{equation*}
+
+
+$\underset{s\times e}{O} = \underset{s\times e}{M} + \underset{s\times e}{O}$
+
+where M is a look ahead mask matrix with upper triangular elements as $-inf$.
+
+\begin{equation*}
+\underset{s\times h}{Q_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^Q}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{K_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^K}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{V_i} = {\underset{s\times e}{O}}\times \underset{e\times h}{W_i^V}
+\end{equation*}
+
+
+\begin{equation*}
+\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K}, \underset{s\times h}{V})
+\end{equation*}
+
+*** Encoder-Decoder Attention Layer
+
+\begin{equation*}
+\underset{s\times h}{Q_i} = {\underset{s\times h}{Z}}\times \underset{h\times h}{W_i^Q}
+\end{equation*}
+
+\begin{equation*}
+\underset{s\times h}{Z} = selfAtten(\underset{s\times h}{Q}, \underset{s\times h}{K_d}, \underset{s\times h}{V_d})
+\end{equation*}
+
+*** Feed forward neural network
+\begin{equation*}
+\underset{1\times h}{r} = NN{(\underset{1\times h}{z})
+\end{equation*}
+
+$\forall r_i , i=\{1,2,..s\}$ parallely with same $NN$.
+
+\begin{equation*}
+z = LayerNorm(r+z)
+\end{equation*}
+
+** Training
+We prepend and append special tokens to the input sentence of encoder, ie <SOS> and <EOS>.
+Input of decoder is the target output with <SOS> preppended. If the number of words are smaller we pad it to equalize the sequence length of the model.
+Output target sentence will be appended by <EOS>.
+
+
