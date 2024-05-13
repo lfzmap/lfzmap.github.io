@@ -4,11 +4,11 @@
 #+title: Transformer
 #+STARTUP: latexpreview
 
-
-
 Models handling sequential data were prominantly recurrent neural networks and convolutional neural networks, including a encoder-decoder. seq2seq passing attention information betweek encoder and decoder were performing better. This work completely removes RNN and CNN, instead built using attention mechanism only.
 
 RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. 
+
+
 
 * Model Architecture
 ** Necessary imports
@@ -59,30 +59,21 @@ class Encoder(nn.Module):
 **** Multi-head attention
 ***** Self-attention
 #+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
-class SelfAttention(nn.Module):
-    def __init__(self, input_dim, output_dim):
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, embed_dim, heads):
         super(SelfAttention, self).__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.W_Q = nn.Linear(self.input_dim, self.output_dim)
-        self.W_K = nn.Linear(self.input_dim, self.output_dim)
-        self.W_V = nn.Linear(self.input_dim, self.output_dim)
+        self.embed_dim = embed_dim # dim of word embedding vectors
+        self.h = heads # number of heads in a single self attention block
+        assert(self.embed_dim % self.h == 0) # checking the divisibility
+        self.head_dim = self.embed_dim // self.h # dim for each head
+
+    def forward(self, Q, K, V):
         
-    def forward(self, x):
-        Q = self.W_Q(x)
-        K = self.W_K(x)
-        V = self.W_V(x)
-        print(Q.size())
-        return Q
+        return 
 
 if __name__ == "__main__":
-    d_model = 512
-    num_heads = 8
-    m = 128
-    batch = 4
     x = torch.randn(batch, m, d_model)
     a = SelfAttention(d_model, d_model//num_heads)
-    q = a(x)
 #+end_src
 **** Feed forward neural network
 

@@ -53,22 +53,13 @@ $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dens
   
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
 
-* Model
-#+begin_src python :tangle ~/projects/main/models/autosam_encoder.py :mkdirp yes
-import torch.nn as nn
-
-class AutoSamEncoder(nn.Module):
-    def __init__(self ):
-        super(AutoSamEncoder, self).__init__()
-
-    def forward(self, x):
-        return 0
-#+end_src
 * Check inference time
-#+begin_src python :tangle ~/projects/autosam/utils.py :mkdirp yes
+#+begin_src python :tangle ~/projects/autosam/test.py :mkdirp yes
 import os
+import kornia
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 import torch
 import argparse
 import pickle
@@ -77,6 +68,11 @@ from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskG
 from segment_anything.utils.transforms import ResizeLongestSide
 from torchvision.transforms import v2 as T
 import random
+from torchvision.utils import draw_segmentation_masks as draw_overlay
+from torchvision.utils import save_image
+import torch.nn.functional as F
+
+os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
 parser = argparse.ArgumentParser(description='Description of your program')
 parser.add_argument('-lr', '--learning_rate', default=0.0003, help='learning_rate', required=False)
@@ -93,19 +89,8 @@ parser.add_argument('-rotate', '--rotate', default=22, help='image size', requir
 parser.add_argument('-scale1', '--scale1', default=0.75, help='image size', required=False)
 parser.add_argument('-scale2', '--scale2', default=1.25, help='image size', required=False)
 args = vars(parser.parse_args())
-# os.makedirs('results', exist_ok=True)
-# folder = open_folder('results')
-# args['folder'] = folder
-# args['path'] = os.path.join('results',
-#                             'gpu' + folder,
-#                             'net_last.pth')
-# args['path_best'] = os.path.join('results',
-#                                     'gpu' + folder,
-#                                     'net_best.pth')
-# args['vis_folder'] = os.path.join('results', 'gpu' + args['folder'], 'vis')
-# os.mkdir(args['vis_folder'])
 sam_args = {
-    'sam_checkpoint': "/home/lfz/projects/data/sam_ckpts/sam_vit_b.pth",
+    'sam_checkpoint': "/home/lfz/projects/model_weights/sam_pretrained/sam_vit_b.pth",
     'model_type': "vit_b",
     'generator_args': {
         'points_per_side': 8,
@@ -121,13 +106,13 @@ sam_args = {
 }
 def read_image(img_dir, img_path):
    file_path = os.path.join(img_dir, img_path)
-   img = cv2.cvtColor(cv2.imread(file_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-   img = transform_test(img)
+   img_o = cv2.cvtColor(cv2.imread(file_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+   img = transform_test(img_o)
    img = sam_trans.apply_image_torch(img)
    img = sam_trans.preprocess(img)
    img = img.unsqueeze(0)
    img = img.to(device=device)
-   return img
+   return img, img_o
 
 def run_autosam(img, model, sam):
    dense_embeddings = model(img)
@@ -140,16 +125,18 @@ def run_autosam(img, model, sam):
       multimask_output=False)
    return pred
 
-img_dir = "/home/lfz/projects/data/mediscan-seg"
-with open("test.pkl", "rb") as f:
-   test = pickle.load(f)
-with open("val.pkl", "rb") as f:
-   val = pickle.load(f)
+img_dir = "/home/lfz/projects/data/fetal_head_hc18/train/images"
+test = os.listdir(img_dir)
+# img_dir = "/home/lfz/projects/data/mediscan-seg"
+# with open("test.pkl", "rb") as f:
+#    test = pickle.load(f)
+# with open("val.pkl", "rb") as f:
+#    val = pickle.load(f)
 
-test = val + test
+# test = val + test
 
 # load checkpoint
-ckpt_path = "/home/lfz/projects/autosam/results/gpu1/net_best.pth"
+ckpt_path = "/home/lfz/projects/model_weights/autosam/net_best.pth"
 model = torch.load(ckpt_path)
 device = torch.device("cuda")
 model.to(device)
@@ -169,33 +156,34 @@ transform_test = T.Compose([
     T.ToTensor(),
 ])
 
-starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-repetitions = 300
-timings=np.zeros((repetitions,1))
-
 # GPU Warm-UP
 print("GPU warming up...")
 for img_path in test[:10]:
-   img = read_image(img_dir, img_path)
+   img,_ = read_image(img_dir, img_path)
    with torch.no_grad():
       pred = run_autosam(img, model, sam)
 print("Done!")
 
 N = len(test)
+
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+timings=np.zeros((N,1))
+os.makedirs("overlay", exist_ok=True)
 # MEASURE PERFORMANCE
 with torch.no_grad():
-  for rep in range(repetitions):
-     idx = random.randint(0, N-1)
-     img = read_image(img_dir, test[idx])
+  for idx in range(N):
+     img,img_o = read_image(img_dir, test[idx])
+
      starter.record()
      pred = run_autosam(img, model, sam)
      ender.record()
+
      # WAIT FOR GPU SYNC
      torch.cuda.synchronize()
      curr_time = starter.elapsed_time(ender)
-     timings[rep] = curr_time
-     print(rep, curr_time)
-mean_syn = np.sum(timings) / repetitions
+     timings[idx] = curr_time
+
+mean_syn = np.mean(timings)
 std_syn = np.std(timings)
 print(mean_syn, std_syn)
 #+end_src
