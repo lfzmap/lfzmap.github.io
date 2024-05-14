@@ -8,8 +8,6 @@ Models handling sequential data were prominantly recurrent neural networks and c
 
 RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. 
 
-
-
 * Model Architecture
 ** Necessary imports
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
@@ -20,6 +18,7 @@ import math
 ** Overview
 Transformer has an encoder-decoder structure.
 
+#+ATTR_ORG: :width 600
 [[./img/transformer_architecture.png]]
 
 The encoder maps an input sequence $\vec{x}= (x_1, x_2,..,x_n)$ to a representation $\vec{z} = (z_1,z_2,..,z_n)$.
@@ -43,17 +42,201 @@ class InputEmbedding(nn.Module):
  #+end_src
 
 ** Positional Encoding
- #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
- #+end_src
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+import torch.nn as nn
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, max_seq_len, d_model, dropout=0.1):
+        super(PositionalEncoding, self).__init__()
+        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
+        self.dropout = nn.Dropout(p=dropout)
+        pe = torch.zeros(max_seq_len, d_model) # pe for
+        position = torch.arange(0, max_seq_len).unsqueeze(1) #[1,seq_len]
+        div_term = torch.pow(1000, torch.arange(0, d_model, 2)/d_model)
+        pe[:, 0::2] = torch.sin(position / div_term)
+        pe[:, 1::2] = torch.cos(position / div_term)
+        pe = pe.unsqueeze(0) # to be able to add across batches
+        self.register_buffer("pe", pe) # save in state dict but dont train
+
+    def forward(self, x):
+        # current sentence can have lesser words than the maximum possible length
+        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
+        x = self.dropout(x)
+        return x
+#+end_src
+** Layer Normalization
+For a vector $\vec{y}$ layer normalization is given as follows:
+\begin{equation*}
+\vec{y} = \gamma * \frac{\vec{y}-\mu}{\sigma^2} + \beta
+\end{equation*}
+$\gamma$ and $\beta$ are learnable parameters. $\mu$ = mean and $\sigma^2$ = variance. This will make the vector mean as 0 and std devation as 1.
+
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class LayerNorm(nn.Module):
+    def __init__(self, features):
+        super(LayerNorm, self).__init__()
+        self.gamma = nn.Parameter(torch.ones(features))
+        self.beta = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
+    def forward(self, x):
+        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.gamma * (x - mean) / (std + self.eps) + self.beta
+#+end_src
+** Residual Connection
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class ResidualConnection(nn.Module):
+    def __init__(self,size, dropout=0.1):
+        super(ResidualConnection, self).__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.norm = LayerNorm(size)
+        
+    def forward(self, x, sublayer):
+        x = x + self.dropout(sublayer(self.norm(x)))
+        return x
+#+end_src
+
+** Position-wise Feed-Forward Networks
+A feed forward network is applied for each word embedding  seperately. Only one hidden layer with ReLu activation.
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class FeedForwardNN(nn.Module):
+    def __init__(self, d_model, d_ff=2048, dropout=0.1):
+        super(FeedForwardNN, self).__init__()
+
+        self.w_1 = nn.Linear(d_model, d_ff)
+        self.w_2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
+        return self.w_2(self.dropout(self.w_1(x).relu()))
+#+end_src
+
+** Attention
+An attention is a function that maps $\vec{q}$,$\vec{k}$ and $\vec{v}$ to an output. where output is a weighted sum of value. Vector becomes a matrix as we will be calculating for a sentence.
+
+There are two types of attention functions:
+1. Additive function
+2. Dot product function
+
+Additive is done using a MLP while 2 is done using matrix multiplication. Hence 2 is faster.
+Complexity wise both are same but for large $d_k$ additive type outperforms, because the large size explodes the dot product value. This can be counteracted by scaling it with $\sqrt{d_k}$.
+\begin{equation*}
+Attention(Q,K,V) = softmax(\frac{QK^T}{\sqrt{d_k}})V
+\end{equation*}
+
+** Multi-Head Attention
+
+\begin{equation*}
+
+MultiHead(Q,K,V) = Concat(head_1,...,head_h)W^o
+
+where head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
+
+\end{equation*}
+
+$W^Q$ & $W^K$ is $d_{model}\times d_k$ while $W^V$ is $d_{model}\times d_v$
+In this work $h=8$ and $d_k=d_v=d_{model}/h=64$
+
+#+ATTR_ORG: :width 800
+[[./img/multiheadattention.png]] 
+
+
+
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, h, dropout=0.1):
+        super(MultiHeadAttention, self).__init__()
+
+        self.d_model = d_model
+        self.h = h # number of heads
+        assert self.d_model % self.h == 0, "Error! d_model % h>0"
+
+        self.d_k = self.d_model//h
+        self.d_v = self.d_k
+
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(h*d_v, d_model)
+        self.dropout = nn.Dropout(p=droput)
+
+    @staticmethod
+    def attention(q,k,v, mask=None, dropout):
+        d_k = q.shape[-1]
+
+        attn = q@k.transpose(-2,-1) # (B,h,seq,seq)
+        attn /= math.sqrt(d_k)
+
+        if mask is not None:
+            # impt in decoder
+            attn.masked_fill_(mask==0, -1e9) # mask with -inf
+
+        attn = attn.softmax(dim=-1)
+
+        if dropout is not None:
+            attn = self.dropout(attn)
+
+        z = attn @ v # (B, h, seq, d_k)
+        return z, attn
+        
+    def forward(self, q, k, v, mask):
+        # mask = prevent looking at later elements in the seq
+
+        query = self.w_q(q) # (B,seq,d_model)
+        key = self.w_k(k)
+        value = self.w_v(v)
+
+        # split into heads
+        # (B,seq, d_model) -> (B,seq,h,d_k) -> (B,h,seq,d_k)
+        query = query.view(query.shape[0], query.shape[1], self.h, self.d_k).transpose(1,2)
+        key = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1,2)
+        value = value.view(value.shape[0], value.shape[1], self.h, self.d_k).transpose(1,2)
+
+        z, attn = MultiHeadAttention(query, key, value, mask, self.dropout)
+        # (B, h, seq, d_k) -> (B, seq, h, d_k) -> (B, seq, d_model)
+        z = z.transpose(1,2).contiguous().view(x.shape[0], -1, self.h*self.d_k)
+        Z = self.w_o(z)
+        return Z
+#+end_src
+** Encoder Block
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+def getNlayers(module, N):
+    "Produce N identical layers."
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
+class EncoderBlock(nn.Module):
+    "Encoder is made up of self-attn and feed forward (defined below)"
+
+    def __init__(self, size, self_attn, feed_forward, dropout):
+        super(EncoderBlock, self).__init__()
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.sublayer = getNlayers(ResidualConnection(size, dropout), 2)
+        self.size = size
+
+    def forward(self, x, mask):
+        # self attention-> q,kv from same input
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        return self.sublayer[1](x, self.feed_forward)
+#+end_src
 ** Encoder Stack
-Stack is made of six encoder blocks. Each block is made of a multiheaded self-attention and feed forward neural network. Every block has a residual connection over itself with a layer normalization after it.
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 
-*** Encoder Block
-**** Multi-head attention
-***** Self-attention
-**** Feed forward neural network
+class EncoderStack(nn.Module):
+    def __init__(self, encoder_block, Nx=6):
+        super(Encoder, self).__init__()
+        self.layers = getNlayers(encoder_block, Nx)
+        self.size = size
+        self.norm = LayerNorm(encoder_block.size)
 
-** Decoder Stack
+    def forward(self, x, mask):
+        for layer in self.layers:
+            x = layer(x, mask)
+        return self.norm(x)
+#+end_src
 
 * [[http://jalammar.github.io/illustrated-transformer/][Illustrated Transformer]]
 ** Overview
