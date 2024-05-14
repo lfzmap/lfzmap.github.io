@@ -12,9 +12,10 @@ RNN's biggest disadvantage is the sequential nature. During training it needs to
 
 * Model Architecture
 ** Necessary imports
-#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 import torch
 import torch.nn as nn
+import math
 #+end_src
 ** Overview
 Transformer has an encoder-decoder structure.
@@ -25,56 +26,31 @@ The encoder maps an input sequence $\vec{x}= (x_1, x_2,..,x_n)$ to a representat
 
 Given this $\vec{z}$ the decoder then generates output $\vec{y}=(y_1,y_2,..,y_m)$ one element at a time. Transformer is *Auto-Regressive*, as in the decoder will take the previous output element as additional input for the next step.
 
+** Input Embedding
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
-import torch.nn as nn
+class InputEmbedding(nn.Module):
+    def __init__(self, d_model, vocab_size):
+        super(InputEmbedding, self).__init__()
 
-class Transformer(nn.Module):
-    def __init__(self ):
-        super(Transformer, self).__init__()
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+        self.d_model = d_model # embedding size
+        self.vocab_size = vocab_size
+        self.embedding = nn.Embedding(vocab_size, d_model) # word/token -> emedding id -> embedding vector
 
     def forward(self, x):
-        z = self.encoder(x)
-        y = self.decoder(z)
-        return y
-#+end_src
+        embed = self.embedding(x)
+        embed *= math.sqrt(self.d_model) # section 3.4 
+        return embed
+ #+end_src
 
+** Positional Encoding
+ #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+ #+end_src
 ** Encoder Stack
 Stack is made of six encoder blocks. Each block is made of a multiheaded self-attention and feed forward neural network. Every block has a residual connection over itself with a layer normalization after it.
 
-#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
-class Encoder(nn.Module):
-    def __init__(self, Nx=6):
-        super(Encoder, self).__init__()
-        self.stack = nn.ModuleList()
-        for i in range(Nx):
-            self.stack.append(EncoderBlock())        
-
-    def forward(self, x):
-        out = self.stack(x)
-        return out
-#+end_src
 *** Encoder Block
 **** Multi-head attention
 ***** Self-attention
-#+begin_src python :tangle ~/projects/main/models/transformer.py :mkdirp yes
-class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, embed_dim, heads):
-        super(SelfAttention, self).__init__()
-        self.embed_dim = embed_dim # dim of word embedding vectors
-        self.h = heads # number of heads in a single self attention block
-        assert(self.embed_dim % self.h == 0) # checking the divisibility
-        self.head_dim = self.embed_dim // self.h # dim for each head
-
-    def forward(self, Q, K, V):
-        
-        return 
-
-if __name__ == "__main__":
-    x = torch.randn(batch, m, d_model)
-    a = SelfAttention(d_model, d_model//num_heads)
-#+end_src
 **** Feed forward neural network
 
 ** Decoder Stack
