@@ -46,7 +46,7 @@ class InputEmbedding(nn.Module):
 import torch.nn as nn
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, max_seq_len, d_model, dropout=0.1):
+    def __init__(self, d_model, dropout=0.1, max_seq_len=5000):
         super(PositionalEncoding, self).__init__()
         # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
         self.dropout = nn.Dropout(p=dropout)
@@ -202,37 +202,129 @@ class MultiHeadAttention(nn.Module):
         return Z
 #+end_src
 ** Encoder Block
+Here the mask/encoder_mask/src_mask corresponds to the mask for disabling interaction with the paddings.While in decoder the mask is for avoiding interaction with the future words.
+
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 def getNlayers(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 class EncoderBlock(nn.Module):
-    def __init__(self, d_model, self_attn, feed_forward, dropout):
+    def __init__(self, d_model, self_attn, feed_forward, dropout=0.1):
         super(EncoderBlock, self).__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = getNlayers(ResidualConnection(d_model, dropout), 2)
+        self.residual_connections = getNlayers(ResidualConnection(d_model, dropout), 2)
         self.size = size
 
     def forward(self, x, mask):
         # self attention-> q,kv from same input
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return self.sublayer[1](x, self.feed_forward)
+        x = self.residual_connections[0](x, lambda x: self.self_attn(x, x, x, mask))
+        return self.residual_connections[1](x, self.feed_forward)
 #+end_src
 ** Encoder Stack
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 class EncoderStack(nn.Module):
-    def __init__(self, encoder_block, Nx=6, d_model=512):
+    def __init__(self, encoder_block, Nx=6):
         super(EncoderStack, self).__init__()
         self.layers = getNlayers(encoder_block, Nx)
-        self.d_model = d_model
         self.norm = LayerNorm(encoder_block.d_model)
 
     def forward(self, x, mask):
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
+#+end_src
+** Decoder Block
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class DecoderBlock(nn.Module):
+    def __init__(self,d_model, self_attn, cross_attn, feed_forward, dropout=0.1):
+        super(DecoderBlock, self).__init__()
+
+        self.self_attn = self_attn
+        self.cross_attn = cross_attn
+        self.feed_forward = feed_forward
+
+        self.residual_connections = getNlayers(ResidualConnection(d_model, dropout), 3)
+
+    def forward(self, x, encoder_output, src_mask, target_mask):
+        
+        x = self.residual_connections[0](x, lambda x: self.self_attn(x, x, x, target_mask))
+        x = self.residual_connections[1](x, lambda x: self.cross_attn(x, encoder_output, encoder_output, src_mask))
+        x = self.residual_connections[2](x, self.feed_forward(x))
+        return x
+#+end_src
+** Decoder Stack
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class DecoderStack(nn.Module):
+    def __init__(self, decoder_block, Nx=6):
+        super(DecoderStack, self).__init__()
+        self.layers = getNlayers(decoder_block, Nx)
+        self.norm = LayerNorm(decoder_block.d_model)
+
+    def forward(self, x, encoder_output, src_mask, target_mask):
+        for layer in self.layers:
+            x = layer(x, encoder_output, src_mask, target_mask)
+        return self.norm(x)
+#+end_src
+** Linear layer
+Project output to vocabulary space
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class LinearLayer(nn.Module):
+    def __init__(self, d_model, vocab_size):
+        super(LinearLayer, self).__init__()
+        self.ll = nn.Linear(d_model, vocab_size)
+
+    def forward(self, x):
+        # (B, seq, d_model) => (B, seq, vocab_size)
+        return torch.log_softmax(self.ll(x), dim=-1)
+#+end_src
+** Transformer
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+class Transformer(nn.Module):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+        super(Transformer, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.src_embed = src_embed
+        self.tgt_embed = tgt_embed
+        self.generator = gnerator
+
+    def forward(self, src, tgt, src_mask, tgt_mask):
+        "Take in and process masked src and target sequences."
+        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
+
+    def encode(self, src, src_mask):
+        return self.encoder(self.src_embed(src), src_mask)
+
+    def decode(self, memory, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+#+end_src
+** Build a Transformer
+#+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
+def build_transformer(
+        src_vocab_size, tgt_vocab_size,
+        src_seq_len=5000, tgt_seq_len=5000,
+        d_model=512, d_ff=2048, h=8, N=6, droput=0.1):
+
+    attn_block = MultiHeadConnection(d_model, h, dropout)
+    feed_forward = FeedForwardNN(d_model, d_ff, dropout)
+    pos_e = 
+    
+    model = Transformer(
+        EncoderStack(
+            EncoderBlock(d_model, copy.deepcopy(attn_block), copy.deepcopy(feed_forward), dropout), N),
+        DecoderStack(
+            DecoderBlock(d_model, copy.deepcopy(attn_block), copy.deepcopy(attn_block), copy.deepcopy(feed_forward), dropout), N),
+        nn.Sequential(InputEmbedding(d_model, src_vocab_size), PositionalEncoding(d_model, dropout, src_seq_len)),
+        nn.Sequential(InputEmbedding(d_model, tgt_vocab_size), PositionalEncoding(d_model, dropout, tgt_seq_len)),
+        LinearLayer(d_model, tgt_vocab_size))
+
+    # Initialize parameters with Glorot / fan_avg.
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+    return model
 #+end_src
 
 * [[http://jalammar.github.io/illustrated-transformer/][Illustrated Transformer]]
