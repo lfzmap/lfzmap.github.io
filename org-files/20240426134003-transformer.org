@@ -73,10 +73,10 @@ $\gamma$ and $\beta$ are learnable parameters. $\mu$ = mean and $\sigma^2$ = var
 
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 class LayerNorm(nn.Module):
-    def __init__(self, features):
+    def __init__(self, d_model):
         super(LayerNorm, self).__init__()
-        self.gamma = nn.Parameter(torch.ones(features))
-        self.beta = nn.Parameter(torch.zeros(features))
+        self.gamma = nn.Parameter(torch.ones(d_model))
+        self.beta = nn.Parameter(torch.zeros(d_model))
         self.eps = eps
 
     def forward(self, x):
@@ -88,10 +88,10 @@ class LayerNorm(nn.Module):
 ** Residual Connection
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
 class ResidualConnection(nn.Module):
-    def __init__(self,size, dropout=0.1):
+    def __init__(self, d_model, dropout=0.1):
         super(ResidualConnection, self).__init__()
         self.dropout = nn.Dropout(dropout)
-        self.norm = LayerNorm(size)
+        self.norm = LayerNorm(d_model)
         
     def forward(self, x, sublayer):
         x = x + self.dropout(sublayer(self.norm(x)))
@@ -208,13 +208,11 @@ def getNlayers(module, N):
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 class EncoderBlock(nn.Module):
-    "Encoder is made up of self-attn and feed forward (defined below)"
-
-    def __init__(self, size, self_attn, feed_forward, dropout):
+    def __init__(self, d_model, self_attn, feed_forward, dropout):
         super(EncoderBlock, self).__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = getNlayers(ResidualConnection(size, dropout), 2)
+        self.sublayer = getNlayers(ResidualConnection(d_model, dropout), 2)
         self.size = size
 
     def forward(self, x, mask):
@@ -224,13 +222,12 @@ class EncoderBlock(nn.Module):
 #+end_src
 ** Encoder Stack
 #+begin_src python :tangle ~/projects/ultrasound/models/transformer.py :mkdirp yes
-
 class EncoderStack(nn.Module):
-    def __init__(self, encoder_block, Nx=6):
-        super(Encoder, self).__init__()
+    def __init__(self, encoder_block, Nx=6, d_model=512):
+        super(EncoderStack, self).__init__()
         self.layers = getNlayers(encoder_block, Nx)
-        self.size = size
-        self.norm = LayerNorm(encoder_block.size)
+        self.d_model = d_model
+        self.norm = LayerNorm(encoder_block.d_model)
 
     def forward(self, x, mask):
         for layer in self.layers:

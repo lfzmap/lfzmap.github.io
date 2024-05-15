@@ -1,0 +1,36 @@
+:PROPERTIES:
+:ID:       33d05546-c890-4caa-8760-736fb7dbbce5
+:END:
+#+title: GRE-TOEFL
+
+* GRE
+
+#+ATTR_ORG: :width 800
+[[./img/gre.png]]
+
+* TOEFL
+
+#+ATTR_ORG: :width 800
+[[./img/toefl.png]]
+
+** Reading:
+
+It includes two reading passages, each approximately 700 words long, with 10 questions per passage. It should take about 35 minutes to complete the Reading section.
+Listening:
+
+3 lectures, 3-5 minutes each, some with classroom discussion; 6 questions per lecture
+2 conversations, 3 minutes each; 5 questions per conversation
+You can take notes on any audio item throughout the test to help you answer questions.
+
+** Speaking:
+
+Question 1: Independent Speaking Task — requires you to draw entirely on your own ideas, opinions and experiences when you respond.
+Questions 2–4: Integrated Speaking Tasks — require you to combine your English-language skills — listening and speaking, or listening, reading and speaking — just as you would in or out of a classroom.
+Prep time: You'll get 15–30 seconds of preparation time before each response, and your response will be 45 or 60 seconds long.
+Speaking response: To respond, you'll speak into the microphone and your responses will be recorded.
+Test time: It should take about 16 minutes to complete the Speaking section.
+
+** Writing:
+There are two writing tasks.
+Integrated writing task (20 minutes) — read a short passage and listen to a short lecture, then write in response to what you read and listened to.
+Writing for an Academic Discussion task (10 minutes) — state and support an opinion in an online classroom discussion.
