@@ -116,6 +116,7 @@ def read_image(img_dir, img_path):
 
 def run_autosam(img, model, sam):
    dense_embeddings = model(img)
+   print(dense_embeddings.size())
    image_embeddings = sam.image_encoder(img)
    pred, iou_predictions = sam.mask_decoder(
       image_embeddings=image_embeddings,
@@ -125,15 +126,15 @@ def run_autosam(img, model, sam):
       multimask_output=False)
    return pred
 
-img_dir = "/home/lfz/projects/data/fetal_head_hc18/train/images"
-test = os.listdir(img_dir)
-# img_dir = "/home/lfz/projects/data/mediscan-seg"
-# with open("test.pkl", "rb") as f:
-#    test = pickle.load(f)
-# with open("val.pkl", "rb") as f:
-#    val = pickle.load(f)
+# img_dir = "/home/lfz/projects/data/fetal_head_hc18/train/images"
+# test = os.listdir(img_dir)
+img_dir = "/home/lfz/projects/data/mediscan-seg"
+with open("test.pkl", "rb") as f:
+   test = pickle.load(f)
+with open("val.pkl", "rb") as f:
+   val = pickle.load(f)
 
-# test = val + test
+test = val + test
 
 # load checkpoint
 ckpt_path = "/home/lfz/projects/model_weights/autosam/net_best.pth"

@@ -355,6 +355,12 @@
 
 #+end_src
 
+#+begin_src emacs-lisp :result outputs
+;; Trying to install yaml-mode
+(use-package yaml-pro
+  :after yaml-mode
+  :hook (yaml-mode . yaml-pro-mode))
+#+end_src
 * Org-mode
 ** Bindings
 *** Tangle : C-c C-v t
@@ -565,4 +571,5 @@ All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets
 (org-roam-sqlite-available-p)
 ;; (treesit-language-available-p 'javascript)
 #+end_src
+
 

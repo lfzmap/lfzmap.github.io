@@ -1,0 +1,221 @@
+:PROPERTIES:
+:ID:       652855c4-c6cb-476c-a8fd-39540e3e0c59
+:END:
+#+title: MobileSAM
+
+* Basics
+
+- [[https://arxiv.org/pdf/2306.14289][Paper]]
+- [[https://github.com/ChaoningZhang/MobileSAM/tree/master][Code]]
+
+#+begin_src sh
+$pip install git+https://github.com/ChaoningZhang/MobileSAM.git
+#+end_src
+
+SAM's image encoder is replaced by a light-weight one.
+
+#+ATTR_ORG: :width 800
+[[./img/mobilesam.png]]
+
+SAM's ViT based image encoder are huge, ViT-H = 632M and ViT-B = 86M. In this work a Tiny-ViT was created after knowledge distillation.
+
+* Datamodule
+#+begin_src python :tangle ~/projects/ultrasound/datamodules/mediscan.py :mkdirp yes
+import os
+import random
+import pickle
+import cv2
+import lightning as L
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms as T
+
+
+class MediscanDataset(Dataset):
+  def __init__(self, img_paths, transform=None):
+    self.img_paths = img_paths
+    self.transform = transform
+
+  def __len__(self):
+    return len(self.img_paths)
+
+  def __getitem__(self,idx):
+    img_path = self.img_paths[idx]
+    mask_path = img_path.replace("images", "masks")
+
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    mask = cv2.imread(mask_path)
+    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+
+    if self.transform:
+        img = self.transform(img)
+        mask = self.transform(mask)
+
+    mask[mask<200]=0.0
+    mask[mask>=200]=1.0
+
+
+    out = {"img": img, "mask":mask}
+    out["id"] = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
+    return out
+
+
+class MediscanDataModule(L.LightningDataModule):
+    def __init__(self, data_dir, resize_dim, batch_size):
+        super().__init__()
+        self.data_dir = data_dir
+        self.transform = T.Compose([
+          T.ToPILImage(),
+          T.Resize((resize_dim, resize_dim)),
+          T.ToTensor()])
+        self.batch_size=batch_size
+
+    def prepare_data(self):
+        imgs = {}
+        img_dir = self.data_dir
+        for label in os.listdir(img_dir):
+            imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+
+        train = []
+        test = []
+        val = []
+
+        for label in imgs:
+            random.shuffle(imgs[label])
+            train_split = imgs[label][:int(0.8*(len(imgs[label])))]
+            train += train_split
+            tmp = imgs[label][int(0.8*(len(imgs[label]))):]
+            random.shuffle(tmp)
+            tmp_val = tmp[:int(0.5*(len(tmp)))]
+            tmp_test = tmp[int(0.5*(len(tmp))):]
+            val += tmp_val
+            test += tmp_test
+
+        random.shuffle(train)
+        random.shuffle(val)
+        random.shuffle(test)
+        with open('train.pkl', 'wb') as f:
+            pickle.dump(train, f)
+        with open('val.pkl', 'wb') as f:
+            pickle.dump(val, f)
+        with open('test.pkl', 'wb') as f:
+            pickle.dump(test, f)
+
+        val = val + test
+        self.train = train
+        self.test = val
+        print(f'Train: {len(train)}; Val: {len(val)}; Test: {len(test)}')
+
+    def setup(self, stage: str):
+        # Assign train/val datasets for use in dataloaders
+        if stage == "fit":
+            self.train_ds = MediscanDataset(self.train, self.transform)
+            self.val_ds = MediscanDataset(self.test)
+        if stage == "test":
+            self.test_ds = MediscanDataset(self.test)
+        if stage == "predict":
+            self.test_ds = MediscanDataset(self.test)
+
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=self.batch_size)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=self.batch_size)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_ds, batch_size=self.batch_size)
+
+    def predict_dataloader(self):
+        return DataLoader(self.predict_ds, batch_size=self.batch_size)
+#+end_src
+
+* Module
+#+begin_src python :tangle ~/projects/ultrasound/models/mobilesam.py :mkdirp yes
+import torch
+import torch.nn as nn
+import lightning as L
+from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+
+class MobileSAM(nn.Module):
+    def __init__(self, model_type ,sam_checkpoint):
+        super(MobileSAM, self).__init__()
+        self.model_type = model_type 
+        self.sam_checkpoint = sam_checkpoint
+        # load mobile sam checkpoint
+        mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        self.sparse_embeddings_none, self.dense_embeddings_none = mobile_sam.prompt_encoder(points=None, boxes=None, masks=None)
+        self.mobile_sam = mobile_sam.cuda()
+        print(self.mobile_sam.image_encoder)
+
+    def forward(self, x, self_prompt_embeddings):
+        # encode input image
+        image_embeddings = self.mobile_sam.image_encoder(x)
+        # run mask decoder with self prompt embeddings
+        pred, iou = self.mobile_sam.mask_decoder(
+            image_embeddings=image_embeddings,
+            image_pe=self.mobile_sam.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=self.sparse_embeddings_none.cuda(),
+            dense_prompt_embeddings=self_prompt_embeddings,
+            multimask_output=False)
+        return pred, iou
+
+class MobileSAMModel(L.LightningModule):
+    def __init__(self,
+                 model_type,
+                 checkpoint,
+                 lr):
+        super().__init__()
+
+        model = MobileSAM(model_type, checkpoint)
+        self.model_type = model_type
+        self.checkpoint = checkpoint
+        self.lr = lr
+        self.save_hyperparameters()
+        self.model = model
+
+    def training_step(self, batch, batch_idx):
+        img = batch["img"]
+        d = torch.randn(2,256,64,64).cuda()
+        p, iou = self.model(img, d)
+        loss = torch.Tensor([0.0]).requires_grad_()
+        return loss
+
+    # def validation_step(self, batch, batch_idx):
+    #     # this is the validation loop
+    #     x, y = batch
+    #     z = self.model(x)
+    #     val_loss = 
+    #     self.log("val_loss", val_loss)
+
+    # def test_step(self, batch, batch_idx):
+    #     # this is the test loop
+    #     x, y = batch
+    #     z = self.model(x)
+    #     test_loss = 
+    #     self.log("test_loss", test_loss)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
+if __name__ == "__main__":
+    import torch
+    model = MobileSAM(model_type="vit_t",
+                 sam_checkpoint="/home/lfz/projects/model_weights/mobile_sam.pt")
+    x = torch.randn(1,3, 1024, 1024)
+    d = torch.randn(1,256,64,64)
+    p, i = model(x,d)
+    print(p.size(), i)
+#+end_src
+
+* Main
+#+begin_src python :tangle ~/projects/ultrasound/main.py :mkdirp yes
+import lightning as L
+from lightning.pytorch.cli import LightningCLI
+from models import *
+from datamodules import *
+
+cli = LightningCLI()
+#+end_src
