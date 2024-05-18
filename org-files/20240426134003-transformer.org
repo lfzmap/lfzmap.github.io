@@ -29,12 +29,13 @@ Fundamental operation of a transformer architecture. It is a seq to seq operatio
 Each of the vector in the sequence has a dimension of $k$.
 
 \begin{equation*}
-
 w_{ij}^{'} = x_i^Tx_j
-
-w_{ij} = \frac{e^{w_{ij}^{'}}}{\sum_{j}_{} e^{w_{ij}^{'}}}
-
 \end{equation*}
+
+\begin{equation*}
+w_{ij} = \frac{e^{w_{ij}^{'}}}{ \sum_{j} e^{w_{ij}^{'}}}
+\end{equation*}
+
 Dot product's range is $(-\infty,\infty)$, softmax makes it to $[0,1]$
 
 \begin{equation*}
@@ -51,15 +52,11 @@ def basic_selfattn(x):
 
 *** Q,K,V
 
-#+ATTR_ORG: :width 800 :height 600
+#+ATTR_ORG: :width 600
 [[./img/selfattn.png]]
 
 
-
-
-
-
-#+ATTR_ORG: :width 800 :height 400
+#+ATTR_ORG: :width 600
 [[./img/multiheadselfattn.png]]
 
 
