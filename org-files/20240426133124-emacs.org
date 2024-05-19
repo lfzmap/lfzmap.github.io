@@ -555,13 +555,13 @@ mv dist/* ~/.config/emacs/tree-sitter
   :ensure t
   :config
   (setq yas-snippet-dirs '("~/.config/emacs/snippets"))
-  (yas-global-mode 1)
   :general
   (leader-keys
   "y" '(:ignore t :which-key "yasnippets")
   "y <escape>" '(keyboard-escape-quit :which-key t)
   "y n" '(yas-new-snippet :which-key "new snippet")
   "y f" '(yas-visit-snippet-file :which-key "find snippet")))
+(yas-global-mode 1)
 #+end_src
 All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets]] 
 

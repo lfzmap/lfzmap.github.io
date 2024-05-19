@@ -3,3 +3,8 @@
 :END:
 #+title: NanoGPT
 
+
+#+begin_src sh :makedirp yes
+$wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+#+end_src
+

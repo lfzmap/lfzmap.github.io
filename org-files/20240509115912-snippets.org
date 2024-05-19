@@ -253,7 +253,7 @@ trainer.test(model, dataloaders=test_loader)
 # key: code
 # --
 
-+begin_src emacs-lisp :tangle :makedirp yes
++begin_src python :tangle :makedirp yes
 +end_src
 
 #+end_src
