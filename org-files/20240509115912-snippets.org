@@ -245,3 +245,15 @@ trainer.fit(model, datamodule=datamodule)#fast_dev_run=True
 # test the model
 trainer.test(model, dataloaders=test_loader)
 #+end_src
+
+** Babel code
+#+begin_src emacs-lisp :tangle "~/.config/emacs/snippets/fundamental-mode/code" :makedirp yes
+# -*- mode: snippet -*-
+# name: babel code
+# key: code
+# --
+
++begin_src emacs-lisp :tangle :makedirp yes
++end_src
+
+#+end_src

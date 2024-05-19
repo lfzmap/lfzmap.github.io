@@ -8,17 +8,16 @@ Models handling sequential data were prominantly recurrent neural networks and c
 
 RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. 
 
-* Transformer-v2
-** Necessary imports
+* Necessary imports
 #+begin_src python :tangle ~/projects/ultrasound/models/transformerv2.py :mkdirp yes
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 #+end_src
-** Self-Attention
+* Self-Attention
 Fundamental operation of a transformer architecture. It is a seq to seq operation. Only operation that propogate information between the vectors. Every other operation is done on individual vectors of the input sequence. Operation is permutaion equivariant.
 
-*** Basic
+** Basic
 
 #+ATTR_ORG: :width 800
 [[./img/basicselfattn.png]]
@@ -50,7 +49,7 @@ def basic_selfattn(x):
    return y
 #+end_src
 
-*** Q,K,V
+** Q,K,V
 
 #+ATTR_ORG: :width 600
 [[./img/selfattn.png]]
@@ -121,7 +120,7 @@ class SelfAttention(nn.Module):
         return y
 #+end_src
 
-** Transformer Block
+* Transformer Block
 #+ATTR_ORG: :width 800 :height 600
 [[./img/transformerblock.png]]
 
@@ -151,7 +150,7 @@ class TransformerBlock(nn.Module):
         return out
 #+end_src
 
-** Transformer Stack
+* Transformer Stack
 #+ATTR_ORG: :width 800 :height 600
 [[./img/transformer.png]]
 
@@ -177,414 +176,7 @@ if __name__ == "__main__":
     print(o.size())
 #+end_src
 
-* Transformer-v1
-** Necessary imports
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-import torch
-import torch.nn as nn
-import math
-import copy
-#+end_src
-** Overview
-Transformer has an encoder-decoder structure.
 
-#+ATTR_ORG: :width 600
-[[./img/transformer_architecture.png]]
-
-The encoder maps an input sequence $\vec{x}= (x_1, x_2,..,x_n)$ to a representation $\vec{z} = (z_1,z_2,..,z_n)$.
-
-Given this $\vec{z}$ the decoder then generates output $\vec{y}=(y_1,y_2,..,y_m)$ one element at a time. Transformer is *Auto-Regressive*, as in the decoder will take the previous output element as additional input for the next step.
-
-** Input Embedding
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class InputEmbedding(nn.Module):
-    def __init__(self, d_model, vocab_size):
-        super(InputEmbedding, self).__init__()
-
-        self.d_model = d_model # embedding size
-        self.vocab_size = vocab_size
-        self.embedding = nn.Embedding(vocab_size, d_model) # word/token -> emedding id -> embedding vector
-
-    def forward(self, x):
-        embed = self.embedding(x)
-        embed *= math.sqrt(self.d_model) # section 3.4 
-        return embed
- #+end_src
-
-** Positional Encoding
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-import torch.nn as nn
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_seq_len=5000):
-        super(PositionalEncoding, self).__init__()
-        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
-        self.dropout = nn.Dropout(p=dropout)
-        pe = torch.zeros(max_seq_len, d_model) # pe for
-        position = torch.arange(0, max_seq_len).unsqueeze(1) #[1,seq_len]
-        div_term = torch.pow(1000, torch.arange(0, d_model, 2)/d_model)
-        pe[:, 0::2] = torch.sin(position / div_term)
-        pe[:, 1::2] = torch.cos(position / div_term)
-        pe = pe.unsqueeze(0) # to be able to add across batches
-        self.register_buffer("pe", pe) # save in state dict but dont train
-
-    def forward(self, x):
-        # current sentence can have lesser words than the maximum possible length
-        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
-        x = self.dropout(x)
-        return x
-#+end_src
-** Layer Normalization
-For a vector $\vec{y}$ layer normalization is given as follows:
-\begin{equation*}
-\vec{y} = \gamma * \frac{\vec{y}-\mu}{\sigma^2} + \beta
-\end{equation*}
-$\gamma$ and $\beta$ are learnable parameters. $\mu$ = mean and $\sigma^2$ = variance. This will make the vector mean as 0 and std devation as 1.
-
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class LayerNorm(nn.Module):
-    def __init__(self, d_model, eps=1e-6):
-        super(LayerNorm, self).__init__()
-        self.gamma = nn.Parameter(torch.ones(d_model))
-        self.beta = nn.Parameter(torch.zeros(d_model))
-        self.eps = eps
-        
-
-    def forward(self, x):
-        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
-        mean = x.mean(-1, keepdim=True)
-        std = x.std(-1, keepdim=True)
-        return self.gamma * (x - mean) / (std + self.eps) + self.beta
-#+end_src
-** Residual Connection
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class ResidualConnection(nn.Module):
-    def __init__(self, d_model, dropout=0.1):
-        super(ResidualConnection, self).__init__()
-        self.dropout = nn.Dropout(dropout)
-        self.norm = LayerNorm(d_model)
-        
-    def forward(self, x, sublayer):
-        x = x + self.dropout(sublayer(self.norm(x)))
-        return x
-#+end_src
-
-** Position-wise Feed-Forward Networks
-A feed forward network is applied for each word embedding  seperately. Only one hidden layer with ReLu activation.
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class FeedForwardNN(nn.Module):
-    def __init__(self, d_model, d_ff=2048, dropout=0.1):
-        super(FeedForwardNN, self).__init__()
-
-        self.w_1 = nn.Linear(d_model, d_ff)
-        self.w_2 = nn.Linear(d_ff, d_model)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        # (B, max_seq_len, d_model) -> (B, max_seq_len, d_model)
-        return self.w_2(self.dropout(self.w_1(x).relu()))
-#+end_src
-
-** Attention
-An attention is a function that maps $\vec{q}$,$\vec{k}$ and $\vec{v}$ to an output. where output is a weighted sum of value. Vector becomes a matrix as we will be calculating for a sentence.
-
-There are two types of attention functions:
-1. Additive function
-2. Dot product function
-
-Additive is done using a MLP while 2 is done using matrix multiplication. Hence 2 is faster.
-Complexity wise both are same but for large $d_k$ additive type outperforms, because the large size explodes the dot product value. This can be counteracted by scaling it with $\sqrt{d_k}$.
-\begin{equation*}
-Attention(Q,K,V) = softmax(\frac{QK^T}{\sqrt{d_k}})V
-\end{equation*}
-
-** Multi-Head Attention
-
-\begin{equation*}
-
-MultiHead(Q,K,V) = Concat(head_1,...,head_h)W^o
-
-where head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
-
-\end{equation*}
-
-$W^Q$ & $W^K$ is $d_{model}\times d_k$ while $W^V$ is $d_{model}\times d_v$
-In this work $h=8$ and $d_k=d_v=d_{model}/h=64$
-
-#+ATTR_ORG: :width 800
-[[./img/multiheadattention.png]] 
-
-
-
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, h, dropout=0.1):
-        super(MultiHeadAttention, self).__init__()
-
-        self.d_model = d_model
-        self.h = h # number of heads
-        assert self.d_model % self.h == 0, "Error! d_model % h>0"
-
-        self.d_k = self.d_model//h
-        self.d_v = self.d_k
-
-        self.w_q = nn.Linear(d_model, d_model)
-        self.w_k = nn.Linear(d_model, d_model)
-        self.w_v = nn.Linear(d_model, d_model)
-        self.w_o = nn.Linear(h*self.d_v, d_model)
-        self.dropout = nn.Dropout(p=dropout)
-
-    @staticmethod
-    def attention(q,k,v, mask, dropout):
-        d_k = q.shape[-1]
-
-        attn = q@k.transpose(-2,-1) # (B,h,seq,seq)
-        attn /= math.sqrt(d_k)
-
-        if mask is not None:
-            # impt in decoder
-            attn.masked_fill_(mask==0, -1e9) # mask with -inf
-
-        attn = attn.softmax(dim=-1)
-
-        if dropout is not None:
-            attn = dropout(attn)
-
-        z = attn @ v # (B, h, seq, d_k)
-        return z, attn
-        
-    def forward(self, q, k, v, mask):
-        # mask = prevent looking at later elements in the seq
-
-        query = self.w_q(q) # (B,seq,d_model)
-        key = self.w_k(k)
-        value = self.w_v(v)
-
-        # split into heads
-        # (B,seq, d_model) -> (B,seq,h,d_k) -> (B,h,seq,d_k)
-        query = query.view(query.shape[0], query.shape[1], self.h, self.d_k).transpose(1,2)
-        key = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1,2)
-        value = value.view(value.shape[0], value.shape[1], self.h, self.d_k).transpose(1,2)
-
-        z, attn = MultiHeadAttention.attention(query, key, value, mask, self.dropout)
-        # (B, h, seq, d_k) -> (B, seq, h, d_k) -> (B, seq, d_model)
-        z = z.transpose(1,2).contiguous().view(z.shape[0], -1, self.h*self.d_k)
-        Z = self.w_o(z)
-        return Z
-#+end_src
-** Encoder Block
-Here the mask/encoder_mask/src_mask corresponds to the mask for disabling interaction with the paddings.While in decoder the mask is for avoiding interaction with the future words.
-
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-def getNlayers(module, N):
-    "Produce N identical layers."
-    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
-
-class EncoderBlock(nn.Module):
-    def __init__(self, d_model, self_attn, feed_forward, dropout=0.1):
-        super(EncoderBlock, self).__init__()
-        self.self_attn = self_attn
-        self.feed_forward = feed_forward
-        self.residual_connections = getNlayers(ResidualConnection(d_model, dropout), 2)
-        self.d_model = d_model
-
-    def forward(self, x, mask):
-        # self attention-> q,kv from same input
-        x = self.residual_connections[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return self.residual_connections[1](x, self.feed_forward)
-#+end_src
-** Encoder Stack
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class EncoderStack(nn.Module):
-    def __init__(self, encoder_block, Nx=6):
-        super(EncoderStack, self).__init__()
-        self.layers = getNlayers(encoder_block, Nx)
-        self.norm = LayerNorm(encoder_block.d_model)
-
-    def forward(self, x, mask):
-        for layer in self.layers:
-            x = layer(x, mask)
-        return self.norm(x)
-#+end_src
-** Decoder Block
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class DecoderBlock(nn.Module):
-    def __init__(self,d_model, self_attn, cross_attn, feed_forward, dropout=0.1):
-        super(DecoderBlock, self).__init__()
-
-        self.self_attn = self_attn
-        self.cross_attn = cross_attn
-        self.feed_forward = feed_forward
-
-        self.d_model = d_model
-        self.residual_connections = getNlayers(ResidualConnection(d_model, dropout), 3)
-
-    def forward(self, x, encoder_output, src_mask, target_mask):
-        
-        x = self.residual_connections[0](x, lambda x: self.self_attn(x, x, x, target_mask))
-        x = self.residual_connections[1](x, lambda x: self.cross_attn(x, encoder_output, encoder_output, src_mask))
-        x = self.residual_connections[2](x, self.feed_forward)
-        return x
-#+end_src
-** Decoder Stack
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class DecoderStack(nn.Module):
-    def __init__(self, decoder_block, Nx=6):
-        super(DecoderStack, self).__init__()
-        self.layers = getNlayers(decoder_block, Nx)
-        self.norm = LayerNorm(decoder_block.d_model)
-
-    def forward(self, x, encoder_output, src_mask, target_mask):
-        for layer in self.layers:
-            x = layer(x, encoder_output, src_mask, target_mask)
-        return self.norm(x)
-#+end_src
-** Linear layer
-Project output to vocabulary space
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class LinearLayer(nn.Module):
-    def __init__(self, d_model, vocab_size):
-        super(LinearLayer, self).__init__()
-        self.ll = nn.Linear(d_model, vocab_size)
-
-    def forward(self, x):
-        # (B, seq, d_model) => (B, seq, vocab_size)
-        return torch.log_softmax(self.ll(x), dim=-1)
-#+end_src
-** Transformer
-#+begin_src python :tangle ~/projects/ultrasound/models/transformerv1.py :mkdirp yes
-class Transformer(nn.Module):
-    def __init__(self,
-                 src_vocab_size, tgt_vocab_size,
-                 src_seq_len=5000, tgt_seq_len=5000,
-                 d_model=512, d_ff=2048, h=8, N=6, dropout=0.1):
-        super(Transformer, self).__init__()
-
-        attn_block = MultiHeadAttention(d_model, h, dropout)
-        feed_forward = FeedForwardNN(d_model, d_ff, dropout)
-
-        self.encoder = EncoderStack(
-            EncoderBlock(d_model, copy.deepcopy(attn_block), copy.deepcopy(feed_forward), dropout), N)
-        self.decoder =  DecoderStack(
-            DecoderBlock(d_model, copy.deepcopy(attn_block), copy.deepcopy(attn_block), copy.deepcopy(feed_forward), dropout), N)
-
-        self.src_embed = nn.Sequential(InputEmbedding(d_model, src_vocab_size), PositionalEncoding(d_model, dropout, src_seq_len))
-        self.tgt_embed = nn.Sequential(InputEmbedding(d_model, tgt_vocab_size), PositionalEncoding(d_model, dropout, tgt_seq_len))
-        self.generator = LinearLayer(d_model, tgt_vocab_size)
-
-    def init_weights(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def encode(self, src, src_mask):
-        return self.encoder(self.src_embed(src), src_mask)
-
-    def decode(self, memory, src_mask, tgt, tgt_mask):
-        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
-
-    def forward(self, src, tgt, src_mask, tgt_mask):
-        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
-#+end_src
-* [[http://jalammar.github.io/illustrated-transformer/][Illustrated Transformer]]
-** Overview
-Transformer use [[id:f9a2bb31-aad5-452c-90f0-7b24c7cd1ac4][Attention]] to increase the speed with which models can be trained.
-
-#+ATTR_ORG: :width 600
-[[./img/transformer1.png]]
-
-[[./img/transformer2.png]]
-
-Self attention layer let the encoder look at the other elements of the input sequence.
-Decoder has an extra attention layer letting it focus on relevant parts of the input similar to the attention in seq2seq models.
-
-#+ATTR_ORG: :width 600
-[[./img/transformer3.png]]
-
-An encoder recieves a list of vectors where each vector corresponds to a word. Length of word embedding vector is usually 512.
-
-The length of the list is a hyperparameter.
-
-Self attention layer looks at all vectors at the same time, where as the feed forward NN is applied parallelly. It is the same NN applied on each vector seperately giving us parallelization. 
-
-** Self Attention
-
-#+ATTR_ORG: :width 600
-[[./img/transformer4.png]]
-
-Steps in calculating self-attention:
-
-*** Computing Query, Key and Value
-create three vectors from each of the encoder’s input vectors (in this case, the embedding of each word). So for each word, we create a *Query* vector, a *Key* vector, and a *Value* vector. These vectors are created by multiplying the embedding by three matrices that we trained during the training process.
-
-   #+ATTR_ORG: :width 600
-   [[./img/transformer5.png]]
-
-  New 3 vectors has smaller dimension ie 64. It doesn't need to be smaller.
-
-**** Matrix form
-Practically we calculate for all word embeddings at the same time using a matrix
-
-[[./img/transformer6.png]]
-
-
-
-
-*** Calculate Score
-for a word/vector we calculate a score w.r.t other elements of input list.
-
-1. score of word m w.r.t word n =  $S_{mn} = q_m.k_n$
-2. Divide by $\sqrt{d_k}$, ie dimension of key vector to get stable gradients.
-3. Pass the value to softmax function.
-4. Multiply each value vector using this value.
-5. Sum up the weighted value vectors from 4 to obtain the output of the self-attention layer for the word #m
-   
-**** Matrix form
-#+ATTR_ORG: :width 600
-[[./img/transformer7.png]]
-
-
-*** Multi-headed attention
-A single z encoding can be dominated by the word itself, hence calculating multiple Z increase the representation subspaces.
-
-#+ATTR_ORG: :width 600
-[[./img/transformer8.png]]
-
-
-#+ATTR_ORG: :width 600
-[[./img/z1.png]]
-
-This produces 8 Z matrices for a single word/vector. But the next layer of feed forward NN expects a single matrix. Solution is to multiply a weight matrix with the concatenated z matrices producing a single z matrix.
-
-#+ATTR_ORG: :width 600 :height 600
-[[./img/z2.png]]
-
-*** Summary
-
-#+ATTR_ORG: :width 600
-[[./img/transformer9.png]]
-
-** Position information
-
-In order to teach the model the information of the order of the words we combine the word embedding vector with a positional encoding vector.
-
-#+ATTR_ORG: :width 600
-[[./img/position.png]]
-
-** Residual connection around self attention layer
-
-#+ATTR_ORG: :width 600
-[[./img/norm.png]]
-
-** Decoder
-
-Topmost or the last encoder spits out the list of encoded vectors. Using which we create a set of key and query vectors. These are to be used in the encoder-decoder attention layer of every decoder module.
-
-[[./img/decoder1.gif]]
-
-The output from the top decoder at a time is fed into the bottom decoder in the next time step.
-The self attention layer can only look at earlier positions so we mask the future positions by setting it to -inf before softmax step.
-
-Encoder-decoder attention layer use query matrix generated from previous layer, but the key and value matrix from the output of encoder stack.
-
-After the decoder stack there is a usual *decoder stack o/p->linear->logits->softmax* layers. The number with the highest prob indicate the corresponding word.
+* [[id:28076647-416d-4e69-9c31-a161df25b214][NanoGPT]] 
+* [[id:2e2431dd-539d-45fa-892d-f97dd250a9c1][Encoder-Decoder Transformer]] 
+* [[id:22879d3c-8d85-4e5b-82f8-4b1edb63f42b][Illustrated-transformer]] 
