@@ -118,7 +118,7 @@
 (use-package doom-themes
   :demand
   :config
-  (load-theme 'doom-acario-dark t))
+  (load-theme 'doom-acario-light t))
 #+end_src
 
 * Better Modeline
@@ -433,13 +433,13 @@
 ** Centering org
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 
-(defun efs/org-mode-visual-fill ()
-  (setq visual-fill-column-width 100
-        visual-fill-column-center-text t)
-  (visual-fill-column-mode 1))
+;; (defun efs/org-mode-visual-fill ()
+;;   (setq visual-fill-column-width 100
+;;         visual-fill-column-center-text t)
+;;   (visual-fill-column-mode 1))
 
-(use-package visual-fill-column
-  :hook (org-mode . efs/org-mode-visual-fill))
+;; (use-package visual-fill-column
+;;   :hook (org-mode . efs/org-mode-visual-fill))
  #+end_src
 ** Hyperlink
 - image path inside [[]]

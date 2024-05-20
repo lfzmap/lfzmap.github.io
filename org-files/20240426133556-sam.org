@@ -189,3 +189,4 @@ with open('sam_data.pkl', 'wb') as handle:
 
 * [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
 * [[id:b9cdac99-0341-47a9-bf7a-59c1b6c87234][AutoSAM]] 
+* [[id:652855c4-c6cb-476c-a8fd-39540e3e0c59][MobileSAM]] 

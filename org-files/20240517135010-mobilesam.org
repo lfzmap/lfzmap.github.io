@@ -52,23 +52,34 @@ class MediscanDataset(Dataset):
         img = self.transform(img)
         mask = self.transform(mask)
 
-    mask[mask<200]=0.0
-    mask[mask>=200]=1.0
+    mask[mask<0.5]=0.0
+    mask[mask>=0.5]=1.0
 
-
-    out = {"img": img, "mask":mask}
+    out = {"img": img, "mask":mask, "orig_shape": img.shape}
     out["id"] = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
     return out
 
 
-class MediscanDataModule(L.LightningDataModule):
+class Mediscan(L.LightningDataModule):
     def __init__(self, data_dir, resize_dim, batch_size):
         super().__init__()
         self.data_dir = data_dir
+
         self.transform = T.Compose([
           T.ToPILImage(),
           T.Resize((resize_dim, resize_dim)),
+          T.ColorJitter(brightness=0.4,
+                        contrast=0.4,
+                        saturation=0.4,
+                        hue=0.1),
+          T.RandomHorizontalFlip(),
+          T.RandomAffine(22, scale=(0.75, 1.25)),
           T.ToTensor()])
+        self.target_transform = T.Compose([
+          T.ToPILImage(),
+          T.Resize((resize_dim, resize_dim)),
+          T.ToTensor()])
+
         self.batch_size=batch_size
 
     def prepare_data(self):
@@ -111,15 +122,15 @@ class MediscanDataModule(L.LightningDataModule):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit":
             self.train_ds = MediscanDataset(self.train, self.transform)
-            self.val_ds = MediscanDataset(self.test)
+            self.val_ds = MediscanDataset(self.test, self.target_transform)
         if stage == "test":
-            self.test_ds = MediscanDataset(self.test)
+            self.test_ds = MediscanDataset(self.test, self.target_transform)
         if stage == "predict":
-            self.test_ds = MediscanDataset(self.test)
+            self.test_ds = MediscanDataset(self.test, self.target_transform)
 
 
     def train_dataloader(self):
-        return DataLoader(self.train_ds, batch_size=self.batch_size)
+        return DataLoader(self.train_ds, batch_size=self.batch_size, num_workers=0)
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size)
@@ -133,80 +144,164 @@ class MediscanDataModule(L.LightningDataModule):
 
 * Module
 #+begin_src python :tangle ~/projects/ultrasound/models/mobilesam.py :mkdirp yes
+import os
 import torch
+import numpy as np
+import cv2
 import torch.nn as nn
 import lightning as L
+import torch.nn.functional as F
 from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score
 
-class MobileSAM(nn.Module):
+
+class MobileSAMModel(nn.Module):
     def __init__(self, model_type ,sam_checkpoint):
-        super(MobileSAM, self).__init__()
+        super(MobileSAMModel, self).__init__()
         self.model_type = model_type 
         self.sam_checkpoint = sam_checkpoint
-        # load mobile sam checkpoint
-        mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-        self.sparse_embeddings_none, self.dense_embeddings_none = mobile_sam.prompt_encoder(points=None, boxes=None, masks=None)
-        self.mobile_sam = mobile_sam.cuda()
-        print(self.mobile_sam.image_encoder)
+        self.model = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        with torch.no_grad():
+            self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
 
-    def forward(self, x, self_prompt_embeddings):
-        # encode input image
-        image_embeddings = self.mobile_sam.image_encoder(x)
-        # run mask decoder with self prompt embeddings
-        pred, iou = self.mobile_sam.mask_decoder(
-            image_embeddings=image_embeddings,
-            image_pe=self.mobile_sam.prompt_encoder.get_dense_pe(),
+    def forward(self, x): # (B,3,1024,1024)
+        with torch.no_grad():
+            img_embed = self.model.image_encoder(x) # (256,64,64)
+            # prompt_embed = torch.randn(2,256,64,64).cuda()
+            prompt_embed = img_embed
+        pred, iou = self.model.mask_decoder(
+            image_embeddings=img_embed,
+            image_pe=self.model.prompt_encoder.get_dense_pe(),
             sparse_prompt_embeddings=self.sparse_embeddings_none.cuda(),
-            dense_prompt_embeddings=self_prompt_embeddings,
-            multimask_output=False)
+            dense_prompt_embeddings=prompt_embed,
+            multimask_output=False) #(1,256,256)
         return pred, iou
 
-class MobileSAMModel(L.LightningModule):
+class MobileSAM(L.LightningModule):
     def __init__(self,
                  model_type,
                  checkpoint,
                  lr):
         super().__init__()
 
-        model = MobileSAM(model_type, checkpoint)
         self.model_type = model_type
         self.checkpoint = checkpoint
         self.lr = lr
         self.save_hyperparameters()
-        self.model = model
+        self.mobilesam = MobileSAMModel(model_type, checkpoint)
+        self.bce_loss = nn.BCELoss()
+        # make sure we only compute gradients for mask decoder
+        for name, param in self.mobilesam.named_parameters():
+            if name.split('.')[1] == "image_encoder" or name.split('.')[1] == "prompt_encoder":
+                param.requires_grad_(False)
 
     def training_step(self, batch, batch_idx):
-        img = batch["img"]
-        d = torch.randn(2,256,64,64).cuda()
-        p, iou = self.model(img, d)
-        loss = torch.Tensor([0.0]).requires_grad_()
+        img = batch["img"] # (B, 3, 1024, 1024)
+        mask = batch["mask"] # (B, 1, 1024, 1024)
+        pred, iou = self.mobilesam(img) # (B, 1, 256, 256)
+        loss = self.get_loss(pred, mask)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
-    # def validation_step(self, batch, batch_idx):
-    #     # this is the validation loop
-    #     x, y = batch
-    #     z = self.model(x)
-    #     val_loss = 
-    #     self.log("val_loss", val_loss)
+    def validation_step(self, batch, batch_idx):
+        img = batch["img"]
+        mask = batch["mask"]
+        pred, iou = self.mobilesam(img)
+        loss = self.get_loss(pred, mask)
+        metrics = self.get_metrics(pred, mask)
+        self.save_img(batch, pred, "out")
+        self.log("val_loss", loss, on_step=False, on_epoch=True)
+        self.log("val_iou", metrics[0], on_step=False, on_epoch=True)
+        self.log("val_acc", metrics[1], on_step=False, on_epoch=True)
+        self.log("val_recall", metrics[2], on_step=False, on_epoch=True)
+        self.log("val_precision", metrics[3], on_step=False, on_epoch=True)
+        self.log("val_f1", metrics[4], on_step=False, on_epoch=True)
 
-    # def test_step(self, batch, batch_idx):
-    #     # this is the test loop
-    #     x, y = batch
-    #     z = self.model(x)
-    #     test_loss = 
-    #     self.log("test_loss", test_loss)
+    def test_step(self, batch, batch_idx):
+        img = batch["img"]
+        mask = batch["mask"]
+        pred, iou = self.mobilesam(img)
+        loss = self.get_loss(pred, mask)
+        self.save_img(batch, pred, "out")
+        self.log("test_iou", metrics[0], on_step=True, on_epoch=True)
+
+    def dice_loss(self, y_pred, y_true, smooth=1):
+        alpha = 0.5
+        beta = 0.5
+
+        tp = torch.sum(y_true * y_pred, dim=(1, 2, 3))
+        fn = torch.sum(y_true * (1 - y_pred), dim=(1, 2, 3))
+        fp = torch.sum((1 - y_true) * y_pred, dim=(1, 2, 3))
+        tversky_class = (tp + smooth) / (tp + alpha * fn + beta * fp + smooth)
+        return 1 - torch.mean(tversky_class)
+
+    def get_metrics(self, pred, mask):
+        pred = F.interpolate(pred, (1024, 1024), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred).detach().cpu().numpy()
+        mask = mask.detach().cpu().numpy()
+        pred = (pred > 0.5).astype(np.uint8)
+        intersection = np.logical_and(pred, mask)
+        union = np.logical_or(pred, mask)
+        iou = np.sum(intersection) / np.sum(union)
+        y_true = mask.flatten()
+        y_pred = pred.flatten()
+        acc = accuracy_score(y_true, y_pred)
+        recall= recall_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred)
+        return [iou,acc,recall,precision,f1]
+
+    def get_loss(self, pred, mask):
+        mask = F.interpolate(mask, (256, 256), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred)
+
+        loss = self.bce_loss(pred, mask) + self.dice_loss(pred, mask)
+        return loss
+        
+    def save_img(self, batch, pred, dest):
+        os.makedirs(dest, exist_ok=True)
+        pred = F.interpolate(pred, (1024, 1024), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred).detach().cpu()
+        pred[pred<=0.5]=0.0
+        pred[pred>0.5]=1.0
+         
+        N = batch["img"].size()[0]
+        for i in range(N):
+            img = batch["img"][i]
+            img = torch.permute(img, (1, 2, 0)).detach().cpu().numpy()
+            mask = batch["mask"][i]
+            mask = torch.permute(mask, (1, 2, 0)).detach().cpu().numpy()
+            id = batch["id"][i]
+            p = pred[i]
+            p = torch.permute(p, (1, 2, 0)).detach().cpu().numpy()
+
+            
+            overlay1 = np.concatenate((np.zeros((mask.shape[0], mask.shape[1], 2)), mask), axis=2)
+            overlay1 = (overlay1*255).astype(np.uint8)
+
+            overlay2 = np.concatenate((p, np.zeros((p.shape[0], p.shape[1], 2))), axis=2)
+            overlay2 = (overlay2*255).astype(np.uint8)
+
+            img = (img*255).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            img1 = cv2.addWeighted(img,0.8, overlay1,0.2,0)
+            img2 = cv2.addWeighted(img,0.8, overlay2,0.2,0)
+            out = np.hstack((img1, img2))
+            cv2.imwrite(os.path.join(dest, str(id)+'.png'), out)
+
+
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.mobilesam.model.mask_decoder.parameters(), lr=self.lr)
         return optimizer
 
 if __name__ == "__main__":
     import torch
-    model = MobileSAM(model_type="vit_t",
+    model = MobileSAMModel(model_type="vit_t",
                  sam_checkpoint="/home/lfz/projects/model_weights/mobile_sam.pt")
-    x = torch.randn(1,3, 1024, 1024)
-    d = torch.randn(1,256,64,64)
-    p, i = model(x,d)
+    x = torch.randn(1, 3, 1024, 1024).cuda()
+    p, i = model(x)
     print(p.size(), i)
 #+end_src
 
@@ -214,8 +309,68 @@ if __name__ == "__main__":
 #+begin_src python :tangle ~/projects/ultrasound/main.py :mkdirp yes
 import lightning as L
 from lightning.pytorch.cli import LightningCLI
+from lightning.pytorch.loggers import WandbLogger
 from models import *
 from datamodules import *
 
-cli = LightningCLI()
+cli = LightningCLI(save_config_kwargs={"overwrite": True})
+#+end_src
+* Testing
+#+begin_src python :tangle ~/projects/ultrasound/test.py :mkdirp yes
+import os
+import cv2
+import torch
+import torchvision.transforms as T
+from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+import numpy as np
+
+model_type = "vit_t"
+sam_checkpoint = "/home/lfz/projects/model_weights/mobile_sam.pt"
+img_dir = "/home/lfz/projects/data/mediscan-seg/AC/images"
+
+if not torch.cuda.is_available():
+   raise Exception("GPU not available")
+device = "cuda"
+
+
+mobile_sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+mobile_sam.to(device=device)
+
+sparse_embeddings_none, dense_embeddings_none = mobile_sam.prompt_encoder(points=None, boxes=None, masks=None)
+
+mobile_sam.eval()
+mobile_sam = mobile_sam.cuda()
+transform = T.Compose([T.ToPILImage(),
+                       T.Resize((1024, 1024)),
+                       T.ToTensor()])
+
+test = os.listdir(img_dir)
+
+
+starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+timings = []
+with torch.no_grad():
+   for x in test:
+      img_path = os.path.join(img_dir, x)
+      img_o = cv2.cvtColor(cv2.imread(img_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+      img = transform(img_o).unsqueeze(0)
+      img = img.cuda() 
+
+      starter.record()
+      image_embeddings = mobile_sam.image_encoder(img)
+      pred, iou = mobile_sam.mask_decoder(
+         image_embeddings=image_embeddings,
+         image_pe=mobile_sam.prompt_encoder.get_dense_pe(),
+         sparse_prompt_embeddings=sparse_embeddings_none.cuda(),
+         dense_prompt_embeddings=image_embeddings,
+         multimask_output=False)
+      ender.record()
+      # WAIT FOR GPU SYNC
+      torch.cuda.synchronize()
+      curr_time = starter.elapsed_time(ender)
+      timings.append(curr_time)
+
+mean_syn = np.mean(timings[10:])
+std_syn = np.std(timings[10:])
+print(mean_syn, std_syn)
 #+end_src
