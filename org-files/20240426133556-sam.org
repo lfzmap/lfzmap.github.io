@@ -6,7 +6,7 @@
 * Paper
 - https://arxiv.org/pdf/2304.02643.pdf
 * Basics
-[[id:6a264343-c962-4719-a3ce-bdf68ae8ff41][Large language models]] pre-trained on large datasets (web-scale) are known as [[id:021a9dcf-0ed8-429b-b04e-fc2867f2d384][Foundation models]]. These models show very good performance on unseen dataset ie [[id:6d9aa203-daeb-4e41-9aae-41f30adf45ef][Zero-shot learning]] and [[id:7f9d9efa-0b6a-4020-a183-6e9432d7737c][Few-shot learning]]. Further they can also be used for various tasks or even out-of-distribution dataset. This is enabled by [[id:1320fe6c-2d8d-49a6-a012-7c826c07f83a][Prompt engineering]], using text to prompt the model to give a valid response depending on the task.
+Large language models pre-trained on large datasets (web-scale) are known as Foundation models. These models show very good performance on unseen dataset ie Zero-shot learning and Few-shot learning. Further they can also be used for various tasks or even out-of-distribution dataset. This is enabled by Prompt engineering, using text to prompt the model to give a valid response depending on the task.
 
 CLIP and ALIGN are examples of foundation model that tries to align text and image modalities together. Goal of SAM is /to create a foundation model for image segmentation/.
 

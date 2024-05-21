@@ -1,5 +1,0 @@
-:PROPERTIES:
-:ID:       7f9d9efa-0b6a-4020-a183-6e9432d7737c
-:END:
-#+title: Few-shot learning
-

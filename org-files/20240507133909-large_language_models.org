@@ -1,5 +1,0 @@
-:PROPERTIES:
-:ID:       6a264343-c962-4719-a3ce-bdf68ae8ff41
-:END:
-#+title: Large language models
-
