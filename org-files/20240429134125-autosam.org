@@ -4,7 +4,6 @@
 #+title: AutoSAM
 #+STARTUP: latexpreview inlineimages
 
-
 * Basics
 - [[https://arxiv.org/pdf/2306.06370][paper]]
 
@@ -22,7 +21,10 @@ freeze the original SAM and only train the new auxillary encoder.
 git clone https://github.com/talshaharabany/AutoSAM.git
 #+end_src
 
-* Methodology
+* Architecture
+
+[[./img/autosam2.png]]
+
 
 SAM has three components:
 1. Robust image encoder $E_s$ for image $I$
@@ -41,18 +43,233 @@ different stuff. In autosam we replace $E_M$ with our own $g$ but the input is $
 $Z_I = g(I)$
 \end{equation*}
 
-** Loss
+* Loss
 \begin{equation*}
 L_{seg} = L_{BCE}(I,Z_I,M) + L_{dice}(I,Z_I,M)
 \end{equation*}
 
-** Architecture
 $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dense Net]] and a small convolutional decoder.
 - Encoder gives a sequence of images with channels of size 192, 256, 320, 480, 720 and 1280.
 - Decoder gives an output of size 64x64x256, which would be our $Z_I$
   
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
 
+* Module
+
+#+begin_src python :tangle ~/projects/ultrasound/models/autosam.py :mkdirp yes
+import os
+import torch
+import numpy as np
+import cv2
+import torch.nn as nn
+import lightning as L
+import torch.nn.functional as F
+from segment_anything import sam_model_registry
+from .selfpromptencoder import ModelEmb
+from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score
+
+class AutoSAMModel(nn.Module):
+    def __init__(self, model_type ,sam_checkpoint):
+        super(AutoSAMModel, self).__init__()
+        self.model_type = model_type 
+        self.sam_checkpoint = sam_checkpoint
+        self.sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        self.sam.cuda()
+        self.sam.eval()
+        print("Pretrained SAM loaded!")
+
+        with torch.no_grad():
+            self.sparse_embeddings_none, self.dense_embeddings_none = self.sam.prompt_encoder(points=None, boxes=None, masks=None)
+
+        self.self_prompt_encoder = ModelEmb().cuda()
+        print("Pretrained Self-prompt encoder loaded!")
+
+    def forward(self, x): # (B,3,1024,1024)
+        with torch.no_grad():
+            img_embed = self.sam.image_encoder(x) # (B, 256,64,64)
+
+        prompt_embed = self.self_prompt_encoder(x)
+        pred, iou = self.sam.mask_decoder(
+            image_embeddings=img_embed,
+            image_pe=self.sam.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=self.sparse_embeddings_none.cuda(),
+            dense_prompt_embeddings=prompt_embed,
+            multimask_output=False) #(1,256,256)
+        return pred
+
+class AutoSAM(L.LightningModule):
+    def __init__(self,
+                 model_type,
+                 checkpoint,
+                 lr=1e-5):
+        super().__init__()
+
+        self.model_type = model_type
+        self.checkpoint = checkpoint
+        self.lr = lr
+        self.save_hyperparameters()
+        self.model = AutoSAMModel(model_type, checkpoint)
+        self.bce_loss = nn.BCELoss()
+
+        # Freezing weights
+        for name, param in self.model.named_parameters():
+            # print(name)
+            if name.split('.')[1] == "image_encoder" or name.split('.')[1] == "prompt_encoder" or name.split('.')[1] == "mask_decoder":
+                param.requires_grad_(False)
+                # print("False")
+
+    def training_step(self, batch, batch_idx):
+        img = batch["img"] # (B, 3, 1024, 1024)
+        mask = batch["mask"] # (B, 1, 1024, 1024)
+        pred = self.model(img) # (B, 1, 256, 256)
+        loss = self.get_loss(pred, mask)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        img = batch["img"]
+        mask = batch["mask"]
+        pred = self.model(img)
+        loss = self.get_loss(pred, mask)
+        metrics = self.get_metrics(pred, mask)
+        self.save_img(batch, pred, "out")
+        self.log("val_loss", loss, on_step=False, on_epoch=True)
+        self.log("val_iou", metrics[0], on_step=False, on_epoch=True)
+        self.log("val_acc", metrics[1], on_step=False, on_epoch=True)
+        self.log("val_recall", metrics[2], on_step=False, on_epoch=True)
+        self.log("val_precision", metrics[3], on_step=False, on_epoch=True)
+        self.log("val_f1", metrics[4], on_step=False, on_epoch=True)
+
+    def dice_loss(self, y_pred, y_true, smooth=1):
+        alpha = 0.5
+        beta = 0.5
+
+        tp = torch.sum(y_true * y_pred, dim=(1, 2, 3))
+        fn = torch.sum(y_true * (1 - y_pred), dim=(1, 2, 3))
+        fp = torch.sum((1 - y_true) * y_pred, dim=(1, 2, 3))
+        tversky_class = (tp + smooth) / (tp + alpha * fn + beta * fp + smooth)
+        return 1 - torch.mean(tversky_class)
+
+    def get_metrics(self, pred, mask):
+        pred = F.interpolate(pred, (1024, 1024), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred).detach().cpu().numpy()
+        mask = mask.detach().cpu().numpy()
+        pred = (pred > 0.5).astype(np.uint8)
+        intersection = np.logical_and(pred, mask)
+        union = np.logical_or(pred, mask)
+        iou = np.sum(intersection) / np.sum(union)
+        y_true = mask.flatten()
+        y_pred = pred.flatten()
+        acc = accuracy_score(y_true, y_pred)
+        recall= recall_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred)
+        return [iou,acc,recall,precision,f1]
+
+    def get_loss(self, pred, mask):
+        mask = F.interpolate(mask, (256, 256), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred)
+
+        loss = self.bce_loss(pred, mask) + self.dice_loss(pred, mask)
+        return loss
+        
+    def save_img(self, batch, pred, dest):
+        pred = F.interpolate(pred, (1024, 1024), mode="bilinear", align_corners=False)
+        pred = torch.sigmoid(pred).detach().cpu()
+        pred[pred<=0.5]=0.0
+        pred[pred>0.5]=1.0
+         
+        N = batch["img"].size()[0]
+        for i in range(N):
+            img = batch["img"][i]
+            img = torch.permute(img, (1, 2, 0)).detach().cpu().numpy()
+            mask = batch["mask"][i]
+            mask = torch.permute(mask, (1, 2, 0)).detach().cpu().numpy()
+            id = batch["id"][i]
+            p = pred[i]
+            p = torch.permute(p, (1, 2, 0)).detach().cpu().numpy()
+
+            
+            overlay1 = np.concatenate((np.zeros((mask.shape[0], mask.shape[1], 2)), mask), axis=2)
+            overlay1 = (overlay1*255).astype(np.uint8)
+
+            overlay2 = np.concatenate((p, np.zeros((p.shape[0], p.shape[1], 2))), axis=2)
+            overlay2 = (overlay2*255).astype(np.uint8)
+
+            img = (img*255).astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            img1 = cv2.addWeighted(img,0.8, overlay1,0.2,0)
+            img2 = cv2.addWeighted(img,0.8, overlay2,0.2,0)
+            out = np.hstack((img1, img2))
+            cv2.imwrite(os.path.join(dest, str(id)+'.png'), out)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.model.self_prompt_encoder.parameters(), lr=self.lr)
+        return optimizer
+
+if __name__ == "__main__":
+    import torch
+    # model = AutoSAMModel(model_type="vit_b", sam_checkpoint="/home/lfz/projects/model_weights/sam_vit_b.pth").cuda()
+
+    # # model = PromptEncoder().cuda()
+    # # x = torch.randn(2,4096, 320).cuda()
+    # # o = model(x)
+    # # print(o.size())
+
+    # x = torch.randn(2, 3, 1024, 1024).cuda()
+    # o = model(x)
+    # print(o.size())
+
+    model = AutoSAM(model_type="vit_b", checkpoint="/home/lfz/projects/model_weights/autosam_vit_b.pth").cuda()
+#+end_src
+* Config
+#+begin_src yaml :tangle ~/projects/ultrasound/configs/autosam.yml :mkdirp yes
+trainer:
+  callbacks:
+     class_path: lightning.pytorch.callbacks.ModelCheckpoint
+     init_args:
+        dirpath: 'checkpoints'
+        filename: 'autosam-{epoch:02d}-{val_loss:.2f}'
+        save_top_k: 2
+        monitor: 'val_loss'
+        mode: 'min'
+        save_last: True
+     class_path: lightning.pytorch.callbacks.EarlyStopping
+     init_args:
+        monitor: 'val_loss'
+        min_delta: 0.001
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      save_dir: 'wandb'
+      project: 'sam'
+      name: 'autosam'
+      dir: 'wandb'
+  max_epochs: 100
+model:
+  model_type: vit_b
+  checkpoint: /home/lfz/projects/model_weights/autosam_vit_b.pth
+  lr: 1e-5
+data:
+  data_dir: /home/lfz/projects/data/mediscan-seg
+  resize_dim: 1024
+  batch_size: 1
+#+end_src
+
+#+begin_src yaml :tangle ~/projects/ultrasound/configs/debug.yml :mkdirp yes
+trainer:
+  overfit_batches: 10
+  max_epochs: 2
+model:
+  model_type: vit_b
+  checkpoint: /home/lfz/projects/model_weights/autosam_vit_b.pth
+  lr: 1e-5
+data:
+  data_dir: /home/lfz/projects/data/mediscan-seg
+  resize_dim: 1024
+  batch_size: 1
+#+end_src
 * Check inference time
 #+begin_src python :tangle ~/projects/autosam/test.py :mkdirp yes
 import os
