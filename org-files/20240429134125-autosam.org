@@ -55,7 +55,6 @@ $g$ has a encoder arm based on [[https://arxiv.org/abs/1909.00948][Harmonic Dens
 We can also train a /surrogate decoder/ $h$, hence $h(g(I))$ can be a lightweight alternative to SAM.
 
 * Module
-
 #+begin_src python :tangle ~/projects/ultrasound/models/autosam.py :mkdirp yes
 import os
 import torch
@@ -84,6 +83,7 @@ class AutoSAMModel(nn.Module):
         xx = F.interpolate(x, (256, 256), mode='bilinear', align_corners=True)
         prompt_embed = self.self_prompt_encoder(xx)
 
+
         with torch.no_grad():
             x = torch.stack([self.sam.preprocess(img) for img in x], dim=0)
             img_embed = self.sam.image_encoder(x) # (B, 256,64,64)
@@ -107,7 +107,6 @@ class AutoSAM(L.LightningModule):
         self.model_type = model_type
         self.checkpoint = checkpoint
         self.lr = lr
-        print(self.lr)
         self.save_hyperparameters()
         self.model = AutoSAMModel(model_type, checkpoint)
         self.bce_loss = nn.BCELoss()
@@ -119,13 +118,14 @@ class AutoSAM(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         img = batch["img"] # (B, 3, 1024, 1024)
-        mask = batch["mask"] # (B, 1, 1024, 1024)
+        mask_gt = batch["mask"] # (B, 1, 1024, 1024)
 
         pred = self.model(img) # (B, 1, 256, 256)
         pred = self.norm_batch(pred)
         
-        loss = self.get_loss(pred, mask)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, batch_size=pred.size(0))
+
+        loss = self.get_loss(pred, mask_gt)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -137,13 +137,14 @@ class AutoSAM(L.LightningModule):
 
         Idim=256
         pred = F.interpolate(pred, (Idim, Idim), mode="bilinear", align_corners=False)
-        mask = F.interpolate(mask, (Idim, Idim), mode='nearest')
+        mask = F.interpolate(mask.unsqeeze(1), (Idim, Idim), mode='nearest')
         pred[pred > 0.5] = 1.0
         pred[pred <= 0.5] = 0.0
         dice, ji = self.get_dice_ji(pred.squeeze(1).detach().cpu().numpy(), mask.squeeze(1).detach().cpu().numpy())
-        self.save_img(batch, pred, "out")
+
+        # self.save_img(batch, pred, "out")
         B = pred.size(0)
-        self.log("val_loss", 1-dice, on_step=True, on_epoch=True, batch_size=B)
+        self.log("val_loss", 1-dice, on_step=False, on_epoch=True, batch_size=B)
         self.log("val_dice", dice, on_step=False, on_epoch=True, batch_size=B)
         self.log("val_iou", ji, on_step=False, on_epoch=True, batch_size=B)
 
@@ -176,7 +177,7 @@ class AutoSAM(L.LightningModule):
         return 1 - torch.mean(tversky_class)
 
     def get_loss(self, pred, mask):
-        mask = F.interpolate(mask, (256,256), mode='nearest')
+        mask = F.interpolate(mask.unsqueeze(1), (256,256), mode='nearest')
         loss = self.bce_loss(pred, mask) + self.dice_loss(pred, mask)
         return loss
         
@@ -212,7 +213,7 @@ class AutoSAM(L.LightningModule):
             cv2.imwrite(os.path.join(dest, str(id)+'.png'), out)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.self_prompt_encoder.parameters(), lr=self.lr, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
         return optimizer
 
 if __name__ == "__main__":
@@ -248,13 +249,15 @@ trainer:
     init_args:
       save_dir: 'wandb'
       project: 'sam'
-      name: 'autosam-g-lrplus'
+      name: 'pl-debug'
       dir: 'wandb'
   max_epochs: 100
+  log_every_n_steps: 1
+  num_sanity_val_steps: 0
 model:
   model_type: vit_b
   checkpoint: /home/lfz/projects/model_weights/autosam_vit_b.pth
-  lr: 0.0003
+  lr: 0.0001
 data:
   data_dir: /home/lfz/projects/data/mediscan-seg
   resize_dim: 256
