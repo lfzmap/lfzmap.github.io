@@ -115,10 +115,15 @@
 * Set Theme
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; load theme
-(use-package doom-themes
-  :demand
-  :config
-  (load-theme 'doom-acario-light t))
+;; (use-package doom-themes
+;;   :demand
+;;   :config
+;;   (load-theme 'doom-acario-light t))
+(use-package ef-themes)
+;; Disable all other themes to avoid awkward blending:
+(mapc #'disable-theme custom-enabled-themes)
+;; Load the theme of choice:
+(load-theme 'ef-light :no-confirm)
 #+end_src
 
 * Better Modeline

@@ -44,6 +44,8 @@ $Z_I = g(I)$
 \end{equation*}
 
 * Loss
+
+
 \begin{equation*}
 L_{seg} = L_{BCE}(I,Z_I,M) + L_{dice}(I,Z_I,M)
 \end{equation*}
