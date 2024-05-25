@@ -6,7 +6,6 @@
 
 * Basics
 - [[https://arxiv.org/pdf/2306.06370][paper]]
-
 Original SAM is trained on natural images, hence it fails in case of out of distribution (OOD) images
 like medical images. This paper introduces *Overloading* as the solution.
 ** Overloading
@@ -20,7 +19,6 @@ freeze the original SAM and only train the new auxillary encoder.
 #+begin_src sh
 git clone https://github.com/talshaharabany/AutoSAM.git
 #+end_src
-
 * Architecture
 
 [[./img/autosam2.png]]
@@ -44,8 +42,6 @@ $Z_I = g(I)$
 \end{equation*}
 
 * Loss
-
-
 \begin{equation*}
 L_{seg} = L_{BCE}(I,Z_I,M) + L_{dice}(I,Z_I,M)
 \end{equation*}

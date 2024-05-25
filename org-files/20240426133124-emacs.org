@@ -2,32 +2,29 @@
 :ID:       34ced04c-fc88-44fb-a474-c091fde67a80
 :END:
 #+title: Emacs
-
-
 * Early-init file
-
+Prevent package.el loading packages prior to their init-file loading.
 #+begin_src emacs-lisp :tangle "~/.config/emacs/early-init.el" :makedirp yes
-;;prevent package.el loading packages prior to their init-file loading.
 (setq package-enable-at-startup nil)
 #+end_src
 
 * UI Improvements
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-    ;; Flash when the bell rings
-    (setq visible-bell t)
-    ;; Turn off some unneeded UI elements
-    (menu-bar-mode -1)
-    (tool-bar-mode -1)
-    (scroll-bar-mode -1)
-  ;; Ask for textual confirmation instead of GUI
-    (setq use-file-dialog nil)
-  #+end_src
+;; Flash when the bell rings
+(setq visible-bell t)
+;; Turn off some unneeded UI elements
+(menu-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+(setq inhibit-startup-screen t)
+;; Ask for textual confirmation instead of GUI
+(setq use-file-dialog nil)
+#+end_src
 * Recentf mode 
 ** C-x f : recent files
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
   (recentf-mode 1)
 #+end_src
-
 * Line Number
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; Display line numbers in every buffer
@@ -36,6 +33,7 @@
 (dolist (mode '(org-mode-hook
                 term-mode-hook
                 shell-mode-hook
+                fireplace-mode-hook
                 eshell-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 #+end_src
@@ -112,6 +110,14 @@
 
 #+end_src
 
+* Set Font
+- Darwin : https://github.com/topological-modular-forms/Darwin-Typeface/blob/main/output/DarwinSerif-Regular.ttf
+- Doube click on it to install it in ubuntu
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(set-face-attribute 'default nil :font "Iosevka")
+(set-face-attribute 'fixed-pitch nil :font "Fira Code-16")
+(set-face-attribute 'variable-pitch nil :font "Darwin Serif Regular ALPHA-20")
+#+end_src
 * Set Theme
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; load theme
@@ -119,19 +125,25 @@
 ;;   :demand
 ;;   :config
 ;;   (load-theme 'doom-acario-light t))
-(use-package ef-themes)
-;; Disable all other themes to avoid awkward blending:
-(mapc #'disable-theme custom-enabled-themes)
-;; Load the theme of choice:
-(load-theme 'ef-light :no-confirm)
-#+end_src
 
+(use-package modus-themes)
+(load-theme 'modus-operandi-tinted :no-confirm)
+;; (use-package ef-themes)
+;; ;; Disable all other themes to avoid awkward blending:
+;; (mapc #'disable-theme custom-enabled-themes)
+;; ;; Load the theme of choice:
+;; (load-theme 'ef-spring :no-confirm)
+#+end_src
 * Better Modeline
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package doom-modeline
   :ensure t
   :init (doom-modeline-mode 1))
 (use-package nerd-icons)
+
+(use-package nyan-mode
+  :init
+  (nyan-mode))
 
 #+end_src
 
@@ -375,34 +387,49 @@
 *** Show image inline: C-c C-x C-v
 ** Basic setup
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-(defun dw/org-mode-setup ()
-  (org-indent-mode)
-  ;; (variable-pitch-mode 1)
-  (auto-fill-mode 0)
-  (visual-line-mode 1)
-  (setq evil-auto-indent nil))
+    (defun dw/org-mode-setup ()
+    (org-indent-mode)
+    (variable-pitch-mode 1)
+    (auto-fill-mode 0)
+    (visual-line-mode 1)
+    (setq evil-auto-indent nil))
 
-(use-package org
-  :straight (:type built-in)
-  :hook (org-mode . dw/org-mode-setup)
-  :config
-  (setq org-ellipsis " ▼")
-  (setq org-startup-with-inline-images t)
-  (setq org-format-latex-options (plist-put org-format-latex-options :scale 2.0))
-  (setq org-hide-emphasis-markers t)
-  (setq org-fontify-done-headline t)
-  (setq org-startup-folded t)
-  (setq org-src-fontify-natively t)
-  (setq org-latex-listings t)
-  :general
-  (leader-keys
-  "o" '(:ignore t :which-key "org")
-  "o <escape>" '(keyboard-escape-quit :which-key t)
-  "o t" '(org-babel-tangle :which-key "tangle")
-  "o r" '(org-ctrl-c-ctrl-c :which-key "run code block")
-  "o p" '(org-latex-export-to-pdf :which-key "export to pdf")
-  "o e" '(org-edit-special :which-key "edit code")))
-(setq org-image-actual-width nil)
+(defun efs/org-font-setup ()
+(set-face-attribute 'org-block nil :foreground nil :inherit 'fixed-pitch)
+(set-face-attribute 'org-table nil    :inherit 'fixed-pitch)
+(set-face-attribute 'org-block-begin-line nil    :inherit 'fixed-pitch)
+(set-face-attribute 'org-formula nil  :inherit 'fixed-pitch)
+(set-face-attribute 'org-code nil     :inherit '(shadow fixed-pitch))
+(set-face-attribute 'org-table nil    :inherit '(shadow fixed-pitch))
+  (set-face-attribute 'org-verbatim nil :inherit '(shadow fixed-pitch))
+  (set-face-attribute 'org-special-keyword nil :inherit '(font-lock-comment-face fixed-pitch))
+  (set-face-attribute 'org-meta-line nil :inherit '(font-lock-comment-face fixed-pitch))
+  (set-face-attribute 'org-checkbox nil  :inherit 'fixed-pitch)
+  (set-face-attribute 'line-number nil :inherit 'fixed-pitch)
+  (set-face-attribute 'line-number-current-line nil :inherit 'fixed-pitch))
+
+        (use-package org
+            :straight (:type built-in)
+            :hook (org-mode . dw/org-mode-setup)
+            :config
+            (setq org-ellipsis " ▼")
+            (setq org-startup-with-inline-images t)
+            (setq org-format-latex-options (plist-put org-format-latex-options :scale 2.0))
+            (setq org-hide-emphasis-markers t)
+            (setq org-startup-folded t)
+            (setq org-latex-listings t)
+  (efs/org-font-setup)
+            :general
+            (leader-keys
+            "o" '(:ignore t :which-key "org")
+            "o <escape>" '(keyboard-escape-quit :which-key t)
+            "o t" '(org-babel-tangle :which-key "tangle")
+            "o r" '(org-ctrl-c-ctrl-c :which-key "run code block")
+            "o p" '(org-latex-export-to-pdf :which-key "export to pdf")
+            "o e" '(org-edit-special :which-key "edit code")))
+          (setq org-image-actual-width nil)
+
+
 #+end_src
 ** Change Bullet Designs
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
@@ -568,8 +595,99 @@ mv dist/* ~/.config/emacs/tree-sitter
   "y f" '(yas-visit-snippet-file :which-key "find snippet")))
 (yas-global-mode 1)
 #+end_src
+
 All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets]] 
 
+* xkcd comic
+- xkcd-get, xkcd-prev
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package xkcd)
+#+end_src
+* Weather forecast
+- wttrin
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package wttrin
+:ensure t
+:commands (wttrin)
+:custom
+(wttrin-default-cities '("Chennai"))
+(url-user-agent "curl"))
+#+end_src
+* Parrot
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package parrot
+:custom
+(parrot-animate-on-load t)
+(parrot-mode t)) ;; enables the mode
+
+(add-hook 'parrot-click-hook 'flyspell-buffer)
+
+#+end_src
+* Cowsay-fortune
+sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fortunes-off fortunes-ubuntu-server
+
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package cowsay)
+(use-package fortune)
+(princ (shell-command-to-string
+(cl-concatenate 'string
+"(fortune -o ; echo '\n\nStart in "
+(substring-no-properties (emacs-init-time))
+"\n"
+"Today: "
+(format-time-string "%d %B %Y")
+"'; ) | cowsay -f stegosaurus; 
+"))
+(get-buffer-create "*scratch*"))
+
+;; (setq initial-scratch-message ";; Well hello there... ☕\n\n")
+#+end_src
+* Fireplace
+- C-= sound
+- Put mp3 file from repo into the filepath at variable *fireplace-sound-file-path*
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package fireplace)
+#+end_src
+* Zone matrix
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package zone-matrix
+:defer t
+:config
+(progn
+(setq zmx-unicode-mode t))
+)
+
+(use-package zone
+:defer t
+:config
+(progn
+(require 'zone-matrix)
+(require 'zone-matrix-settings)
+
+;; set `zone-matrix' to be the only zone program
+(setq zone-programs [
+                        zone-matrix
+                        ])
+)
+)
+(setq zone-when-idle 30)
+(setq zone-timer (run-with-idle-timer 30 t 'zone))
+#+end_src
+* Hacker News
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package hackernews)
+#+end_src
+* Olivetti - Center content
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package olivetti)
+(setq olivetti-body-width 0.7)
+(setq olivetti-style 'fringes)
+#+end_src
+* Emojify
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package emojify
+  :hook (after-init . global-emojify-mode))
+#+end_src
 * elisp block for checking
 #+begin_src emacs-lisp :result outputs
 ;; (treesit-available-p)
