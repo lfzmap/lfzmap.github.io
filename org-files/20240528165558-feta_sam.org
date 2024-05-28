@@ -1,0 +1,63 @@
+:PROPERTIES:
+:ID:       566fe5b0-c027-498d-b82b-67ce5e583ae3
+:END:
+#+title: Feta-SAM
+
+* Model
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
+import torch.nn as nn
+from mobile_sam import sam_model_registry
+
+
+class FetaSam(nn.Module):
+    def __init__(self, model_type, sam_checkpoint):
+        super(FetaSam, self).__init__()
+        self.model_type = model_type 
+        self.sam_checkpoint = sam_checkpoint
+        self.model = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        with torch.no_grad():
+            self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
+
+        # a dict to store the activations
+        self.activation = {}
+
+        self.patch = self.model.image_encoder.patch_embed.register_forward_hook(self.getActivation("patch")) # (B, 64, 256, 256)
+        self.act1 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act1")) # (B, 4096, 320)
+        self.act2 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act2"))# (B, 4096, 320)
+
+        self.act3 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act3"))# (B, 4096, 320)
+
+        self.model.image_encoder.eval()
+        print("MobileSam weights loaded")
+        # print(self.model)
+
+    def getActivation(self,name):
+        # the hook signature
+        def hook(model, input, output):
+            self.activation[name] = output.detach()
+        return hook
+
+    def forward(self, x):
+        with torch.no_grad():
+            img_embed = self.model.image_encoder(x) # (B, 256,64,64)
+
+        print(self.activation["patch"].size())
+        print(self.activation["act1"].size())
+        print(self.activation["act2"].size())
+        print(self.activation["act3"].size())
+        self.patch.remove()
+        self.act1.remove()
+        self.act2.remove()
+        self.act3.remove()
+        return x
+
+if __name__ == "__main__":
+    import torch
+    model = FetaSam(
+        model_type="vit_t",
+        sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt").cuda()
+    x = torch.randn(2, 3, 1024, 1024).cuda()
+    o = model(x)
+    print("out",o.size())
+#+end_src
+

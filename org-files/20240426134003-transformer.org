@@ -177,6 +177,5 @@ if __name__ == "__main__":
 #+end_src
 
 
-* [[id:28076647-416d-4e69-9c31-a161df25b214][NanoGPT]] 
 * [[id:2e2431dd-539d-45fa-892d-f97dd250a9c1][Encoder-Decoder Transformer]] 
 * [[id:22879d3c-8d85-4e5b-82f8-4b1edb63f42b][Illustrated-transformer]] 
