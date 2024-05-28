@@ -127,7 +127,13 @@ Prevent package.el loading packages prior to their init-file loading.
 ;;   (load-theme 'doom-acario-light t))
 
 (use-package modus-themes)
+;; Add all your customizations prior to loading the themes
+(setq modus-themes-italic-constructs t
+      modus-themes-bold-constructs nil)
+(mapc #'disable-theme custom-enabled-themes)
 (load-theme 'modus-operandi-tinted :no-confirm)
+;; (define-key global-map (kbd "<f5>") #'modus-themes-toggle)
+
 ;; (use-package ef-themes)
 ;; ;; Disable all other themes to avoid awkward blending:
 ;; (mapc #'disable-theme custom-enabled-themes)
@@ -615,12 +621,12 @@ All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets
 #+end_src
 * Parrot
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-(use-package parrot
-:custom
-(parrot-animate-on-load t)
-(parrot-mode t)) ;; enables the mode
+;; (use-package parrot
+;; :custom
+;; (parrot-animate-on-load t)
+;; (parrot-mode t)) ;; enables the mode
 
-(add-hook 'parrot-click-hook 'flyspell-buffer)
+;; (add-hook 'parrot-click-hook 'flyspell-buffer)
 
 #+end_src
 * Cowsay-fortune
@@ -636,7 +642,7 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 "\n"
 "Today: "
 (format-time-string "%d %B %Y")
-"'; ) | cowsay -f stegosaurus; 
+"'; ) | cowsay -f tux; 
 "))
 (get-buffer-create "*scratch*"))
 
@@ -670,8 +676,8 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
                         ])
 )
 )
-(setq zone-when-idle 30)
-(setq zone-timer (run-with-idle-timer 30 t 'zone))
+(setq zone-when-idle 60)
+(setq zone-timer (run-with-idle-timer 60 t 'zone))
 #+end_src
 * Hacker News
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes

@@ -38,7 +38,7 @@ One advantage of this modularity is the we can change Z into
 different stuff. In autosam we replace $E_M$ with our own $g$ but the input is $I$ itself
 
 \begin{equation*}
-$Z_I = g(I)$
+Z_I = g(I)
 \end{equation*}
 
 * Loss
