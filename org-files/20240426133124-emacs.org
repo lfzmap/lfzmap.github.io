@@ -2,6 +2,7 @@
 :ID:       34ced04c-fc88-44fb-a474-c091fde67a80
 :END:
 #+title: Emacs
+
 * Early-init file
 Prevent package.el loading packages prior to their init-file loading.
 #+begin_src emacs-lisp :tangle "~/.config/emacs/early-init.el" :makedirp yes
@@ -649,26 +650,22 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package fireplace)
 #+end_src
-* Zone matrix
+* Zone
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
-(use-package zone-matrix
-:defer t
-:config
-(progn
-(setq zmx-unicode-mode t))
-)
+;; (use-package zone-matrix
+;; :defer t
+;; :config
+;; (progn
+;; (setq zmx-unicode-mode t))
+;; )
 
 (use-package zone
 :defer t
 :config
 (progn
-(require 'zone-matrix)
-(require 'zone-matrix-settings)
-
-;; set `zone-matrix' to be the only zone program
-(setq zone-programs [
-                        zone-matrix
-                        ])
+;; (require 'zone-matrix)
+;; (require 'zone-matrix-settings)
+(setq zone-programs [zone-pgm-drip])
 )
 )
 (setq zone-when-idle 60)
