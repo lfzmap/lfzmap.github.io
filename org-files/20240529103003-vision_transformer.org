@@ -5,3 +5,38 @@
 
 paper :  https://arxiv.org/pdf/2010.11929
 
+* Basics
+In MLP words in a sentence is converted to tokens which are then converted into embedding vector. Then in the case of images a single image would be the input sequence/sentence. We then split them into patches (analogous to words), these patches are then converted to tokens and then to embedding vectors.
+
+*Inductive Biases* :   set of assumptions, constraints, or prior knowledge encoded into a learning algorithm, guiding it to favor certain hypotheses over others.
+In the absence of any guiding principles, models might struggle to discern patterns, leading to overfitting or underfitting.
+Restrictive and preference biases also co-exists in a model.
+
+Since ViT lacks inductive biases of CNN (translation equivariance and locality), it perform better only in case of large datasets.
+
+* Model
+[[./img/vit.png]]
+
+- Image is transformed from $H\times W\times C$ to $N\times (P*P*C)$ then passed linearly projected into $N\times D$ patch embeddings.
+Here number of patches $N= \frac{HW}_{P^2}$ and patch size $P=16$.
+- Prepend a learnable class embedding into the sequence of patch embeddings.
+- Add 1D positional embeddings (2D positional embedding doesnt give much imrovement).
+  
+This embedding matrix is given as input to a normal [[id:0f8b7d24-d097-4785-89c7-ed550415f0a7][Transformer]] stack. MLP blocks of transformer stack uses GELU non-linearity.
+
+- A MLP classifier head is attached to specifically class embedding after tranformer stack.
+
+Instead of raw image patches we can also use a CNN prior and give its feature map as input.
+
+#+begin_src python :tangle ~/projects/ultrasound/models/vit.py :makedirp yes
+import torch.nn as nn
+from transformerv2 import 
+
+class ViT(nn.Module):
+    def __init__(self ):
+        super(ViT, self).__init__()
+
+    def forward(self, x):
+        return 0
+
+#+end_src

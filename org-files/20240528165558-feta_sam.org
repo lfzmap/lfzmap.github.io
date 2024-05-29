@@ -3,61 +3,167 @@
 :END:
 #+title: Feta-SAM
 
-* Model
+Experimental model architecture for real-time segmentation of Fetal ultrasound images.
+
+* Necessary Imports
 #+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
+import torch
 import torch.nn as nn
+import numpy as np
 from mobile_sam import sam_model_registry
+#+end_src
 
+* Model
+** Layer norm
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        return x
+#+end_src
+
+** Aggregator
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
+class AggregatorBlock(nn.Module):
+    def __init__(self,m,n):
+        super(AggregatorBlock, self).__init__()
+        self.downconv = nn.Sequential(
+            nn.Conv2d(m, n, kernel_size=(1, 1), stride=(1, 1), bias=False),
+            LayerNorm2d(n),
+            nn.GELU(approximate='none'))
+        self.conv = nn.Sequential(
+            nn.Conv2d(n, n, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False),
+            LayerNorm2d(n),
+            nn.GELU(approximate='none'))
+
+    def forward(self, x, m_prev=None, phi_prev=None):
+        B,k,C = x.size()
+        x = x.view(B,64,64,C)
+        x = x.permute(0,3,1,2)
+
+        f = self.downconv(x)
+        if m_prev is None and phi_prev is None:
+            m = f
+        else:
+            m = f + phi_prev + m_prev
+        phi = self.conv(m)
+        return phi,m
+
+class Aggregator(nn.Module):
+    def __init__(self):
+        super(Aggregator, self).__init__()
+        self.aggregator1 = AggregatorBlock(160,256).cuda()
+        self.aggregator2 = AggregatorBlock(320,256).cuda()
+        self.aggregator3 = AggregatorBlock(320,256).cuda()
+
+    def forward(self, x):
+        phi,m = self.aggregator1(x["1"])
+        phi,m = self.aggregator2(x["2"],m, phi)
+        phi,m = self.aggregator3(x["3"],m, phi)
+        return phi
+#+end_src
+
+** FetaSAM
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
 class FetaSam(nn.Module):
     def __init__(self, model_type, sam_checkpoint):
         super(FetaSam, self).__init__()
+        self.activation = {}        # select sam model type and load weights
         self.model_type = model_type 
         self.sam_checkpoint = sam_checkpoint
         self.model = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-        with torch.no_grad():
-            self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
-
-        # a dict to store the activations
-        self.activation = {}
-
-        self.patch = self.model.image_encoder.patch_embed.register_forward_hook(self.getActivation("patch")) # (B, 64, 256, 256)
-        self.act1 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act1")) # (B, 4096, 320)
-        self.act2 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act2"))# (B, 4096, 320)
-
-        self.act3 = self.model.image_encoder.layers[3].register_forward_hook(self.getActivation("act3"))# (B, 4096, 320)
-
         self.model.image_encoder.eval()
         print("MobileSam weights loaded")
-        # print(self.model)
+        self.hooks = []
+        for i in range(1,4):
+            self.hooks.append(self.model.image_encoder.layers[i].register_forward_hook(self.getActivation(str(i))))
+        # print(self.model.image_encoder)
+        self.aggregator = Aggregator().cuda()
 
+        with torch.no_grad():
+            self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
+ 
     def getActivation(self,name):
         # the hook signature
         def hook(model, input, output):
             self.activation[name] = output.detach()
         return hook
 
+        
+    @torch.no_grad()
+    def encode_img(self, x):
+        # (B,3,1024,1024) -> (B,256,64,64)
+        img_embed = self.model.image_encoder(x) 
+        return img_embed
+
+    def decode_mask(self, img_embed, prompt_embed):
+        pred, iou = self.model.mask_decoder(
+            image_embeddings=img_embed,
+            image_pe=self.model.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=self.sparse_embeddings_none.cuda(),
+            dense_prompt_embeddings=prompt_embed,
+            multimask_output=False) #(1,256,256)
+        return pred
+ 
     def forward(self, x):
-        with torch.no_grad():
-            img_embed = self.model.image_encoder(x) # (B, 256,64,64)
+        img_embed = self.encode_img(x)
+        prompt_embed = self.aggregator(self.activation)
+        mask = self.decode_mask(img_embed, prompt_embed)
+        return mask
+#+end_src
 
-        print(self.activation["patch"].size())
-        print(self.activation["act1"].size())
-        print(self.activation["act2"].size())
-        print(self.activation["act3"].size())
-        self.patch.remove()
-        self.act1.remove()
-        self.act2.remove()
-        self.act3.remove()
-        return x
-
+**  test
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
 if __name__ == "__main__":
     import torch
+    from torchinfo import summary
     model = FetaSam(
         model_type="vit_t",
         sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt").cuda()
     x = torch.randn(2, 3, 1024, 1024).cuda()
     o = model(x)
-    print("out",o.size())
+    print(model)
+    print(x.size(), o.size())
+#+end_src
+
+* Dataset 
+#+begin_src python :tangle ~/projects/ultrasound/dataloaders/mediscan.py :mkdirp yes
+import os
+import torch
+from torch.utils.data import Dataset
+from torchvision.transforms import ToTensor
+
+class Mediscan(Dataset):
+    def __init__(self, transform=None):
+        self.transform = transform
+
+    def __len__(self):
+        return len()
+
+    # def preprocess(self,x):
+    #     "x : HxWxC uint8 numpy array"
+    #     x = self.transform.apply_image(x)
+    #     x = torch.as_tensor(x, device=self.device)
+    #     x = x.permute(2, 0, 1).contiguous()[None, :, :, :]
+    #     x = self.model.preprocess(x)
+    #     return x
+
+    def __getitem__(self, idx):
+        if self.transform:
+           pass
+
+        return 0
+
+if __name__ == "__main__":
+    d = CustomDataset()
 #+end_src
 

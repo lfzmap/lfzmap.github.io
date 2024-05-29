@@ -1,6 +1,3 @@
-:PROPERTIES:
-:ID:       33d05546-c890-4caa-8760-736fb7dbbce5
-:END:
 #+title: GRE-TOEFL
 
 * GRE
