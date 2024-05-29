@@ -669,7 +669,7 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 )
 )
 (setq zone-when-idle 60)
-(setq zone-timer (run-with-idle-timer 60 t 'zone))
+;; (setq zone-timer (run-with-idle-timer 60 t 'zone))
 #+end_src
 * Hacker News
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
@@ -678,7 +678,7 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 * Olivetti - Center content
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package olivetti)
-(setq olivetti-body-width 0.7)
+(setq olivetti-body-width 0.6)
 (setq olivetti-style 'fringes)
 #+end_src
 * Emojify

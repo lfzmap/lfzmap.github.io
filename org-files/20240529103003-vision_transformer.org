@@ -1,0 +1,7 @@
+:PROPERTIES:
+:ID:       1b46abb5-1ed5-49b4-a42f-3e500483d0e4
+:END:
+#+title: Vision-Transformer
+
+paper :  https://arxiv.org/pdf/2010.11929
+

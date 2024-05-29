@@ -4,9 +4,9 @@
 #+title: Transformer
 #+STARTUP: latexpreview
 
-Models handling sequential data were prominantly recurrent neural networks and convolutional neural networks, including a encoder-decoder. seq2seq passing attention information betweek encoder and decoder were performing better. This work completely removes RNN and CNN, instead built using attention mechanism only.
+Models handling sequential data were prominantly recurrent neural networks and convolutional neural networks, including a encoder-decoder. seq2seq passing attention information between encoder and decoder were performing better. Transformer completely removes RNN and CNN, instead built using attention mechanism only.
 
-RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. 
+RNN's biggest disadvantage is the sequential nature. During training it needs to process one word at a time, increasing the time required greatly. Where as a convolution operation takes in all input vector at the same time. But then the disadvantage of CNN is that an input vector can only see closer neighbours ie, no long range dependencies. Transformer solves both of these issues.
 
 * Necessary imports
 #+begin_src python :tangle ~/projects/ultrasound/models/transformerv2.py :mkdirp yes
@@ -16,7 +16,6 @@ import torch.nn.functional as F
 #+end_src
 * Self-Attention
 Fundamental operation of a transformer architecture. It is a seq to seq operation. Only operation that propogate information between the vectors. Every other operation is done on individual vectors of the input sequence. Operation is permutaion equivariant.
-
 ** Basic
 
 #+ATTR_ORG: :width 800
@@ -57,7 +56,6 @@ def basic_selfattn(x):
 
 #+ATTR_ORG: :width 600
 [[./img/multiheadselfattn.png]]
-
 
 #+begin_src python :tangle ~/projects/ultrasound/models/transformerv2.py :mkdirp yes
 class SelfAttention(nn.Module):
@@ -175,7 +173,6 @@ if __name__ == "__main__":
     o = t(x)
     print(o.size())
 #+end_src
-
 
 * [[id:2e2431dd-539d-45fa-892d-f97dd250a9c1][Encoder-Decoder Transformer]] 
 * [[id:22879d3c-8d85-4e5b-82f8-4b1edb63f42b][Illustrated-transformer]] 
