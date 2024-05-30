@@ -5,7 +5,8 @@
 
 Experimental model architecture for real-time segmentation of Fetal ultrasound images.
 
-* Necessary Imports
+* Model
+** Necessary Imports
 #+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
 import torch
 import torch.nn as nn
@@ -13,7 +14,6 @@ import numpy as np
 from mobile_sam import sam_model_registry
 #+end_src
 
-* Model
 ** Layer norm
 #+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
 class LayerNorm2d(nn.Module):
@@ -136,34 +136,409 @@ if __name__ == "__main__":
 #+end_src
 
 * Dataset 
+** Why different resizing?
+The `resize_longest_distance` function in the SAM (Segment Anything Model) code likely serves to standardize the input image size by resizing the longest dimension to a specific value while maintaining the aspect ratio. This approach is commonly used in computer vision for several reasons:
+
+1. **Aspect Ratio Preservation**: By resizing only the longest dimension and scaling the other dimension proportionally, the function preserves the original aspect ratio of the image. This prevents distortion that could occur if the width and height were resized independently to fixed values. Maintaining the aspect ratio is crucial for the model to correctly interpret the features and objects in the image.
+
+2. **Standardization**: Standardizing the longest dimension of images helps in creating a uniform input size for the model. This is important for batching multiple images together for efficient processing during training and inference. It simplifies the handling of images of different sizes.
+
+3. **Efficiency**: Resizing based on the longest dimension can ensure that the resulting image size is manageable in terms of computational resources. Fixed resizing to both width and height could lead to very large or very small images, either of which can be problematic. Large images can consume excessive memory and computation power, while very small images might lose important details.
+
+4. *Generalization*: Models trained on images resized with aspect ratio preservation tend to generalize better to real-world scenarios. Objects in natural images appear in various sizes and shapes, and preserving the aspect ratio helps the model learn more generalized features.
+
+Here is a brief example to illustrate:
+
+- *Original Image Size*: 4000 x 3000 (width x height)
+- *Target Longest Dimension*: 1024
+
+Using resize_longest_distance:
+- The longest dimension (4000) is resized to 1024.
+- The shorter dimension is scaled proportionally: $\( 3000 \times \frac{1024}{4000} = 768 \)$.
+
+Thus, the new size becomes 1024 x 768, preserving the aspect ratio.
+
+If we were to resize both dimensions to fixed values, say 1024 x 1024, it would distort the image:
+
+- Original aspect ratio: $\( \frac{4000}{3000} = 1.33 \)$
+- New aspect ratio: $\( \frac{1024}{1024} = 1.0 \)$
+
+This distortion can negatively impact the model's performance.
+
+In summary, the resize_longest_distance function is used to ensure that images are resized efficiently while maintaining their original aspect ratio, which is crucial for the model's performance and generalization.
+** import
 #+begin_src python :tangle ~/projects/ultrasound/dataloaders/mediscan.py :mkdirp yes
 import os
+import random
+import pickle
+import cv2
+import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.transforms import ToTensor
+from torch.nn import functional as F
+#+end_src
 
+** setup data
+#+begin_src python :tangle ~/projects/ultrasound/dataloaders/mediscan.py :mkdirp yes
+def setup_data(img_dir, out_dir):
+    print("setting up mediscan data")
+
+    imgs = {}
+    for label in os.listdir(img_dir):
+        imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+
+    train = []
+    test = []
+
+    for label in imgs:
+        random.shuffle(imgs[label])
+        train_split = imgs[label][:int(0.9*(len(imgs[label])))]
+        train += train_split
+        tmp = imgs[label][int(0.9*(len(imgs[label]))):]
+        random.shuffle(tmp)
+        test += tmp
+
+    random.shuffle(train)
+    random.shuffle(test)
+    with open(os.path.join(out_dir,'train.pkl'), 'wb') as f:
+        pickle.dump(train, f)
+    with open(os.path.join(out_dir,'test.pkl'), 'wb') as f:
+        pickle.dump(test, f)
+
+    print(f'Train: {len(train)}; Test: {len(test)}')
+    return train, test
+#+end_src
+
+** class
+#+begin_src python :tangle ~/projects/ultrasound/dataloaders/mediscan.py :mkdirp yes
 class Mediscan(Dataset):
-    def __init__(self, transform=None):
+    def __init__(self, img_paths, transform=None, sam_trans=None, target_length=1024):
+        self.img_paths = img_paths
         self.transform = transform
+        self.sam_trans = sam_trans
+        self.target_length = target_length
+        pixel_mean = [123.675, 116.28, 103.53]
+        pixel_std = [58.395, 57.12, 57.375],
+        self.pixel_mean = torch.Tensor(pixel_mean).view(-1, 1, 1)
+        self.pixel_std = torch.Tensor(pixel_std).view(-1, 1, 1)
+
 
     def __len__(self):
-        return len()
+        return len(self.img_paths)
 
-    # def preprocess(self,x):
-    #     "x : HxWxC uint8 numpy array"
-    #     x = self.transform.apply_image(x)
-    #     x = torch.as_tensor(x, device=self.device)
-    #     x = x.permute(2, 0, 1).contiguous()[None, :, :, :]
-    #     x = self.model.preprocess(x)
-    #     return x
+    def apply_transform(self, image1, image2):
+            return self.transform(image1), self.transform(image2)
+
+    def pad_(self, x):
+        h, w = x.shape[-2:]
+        padh = self.target_length - h
+        padw = self.target_length - w
+        x = F.pad(x, (0, padw, 0, padh))
+        return x
+    
+    def normalize_pad(self, x):
+        """Normalize pixel values and pad to a square input."""
+        # Normalize colors
+        if x.shape[0]==1:
+            pass
+        else:
+            x = (x - self.pixel_mean) / self.pixel_std
+            # x = x / 255
+            pass
+        # Pad
+        x = self.pad_(x)
+        return x
 
     def __getitem__(self, idx):
+        out = {}
+        img_path = self.img_paths[idx]
+        mask_path = img_path.replace("images", "masks")
+
+        img_id = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
+
+        img = cv2.imread(img_path)
+        mask = cv2.imread(mask_path,0)
+
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) #(H,W,3)
+        img, mask = self.sam_trans.apply_image(img), self.sam_trans.apply_image(mask)
         if self.transform:
-           pass
+           img, mask = self.apply_transform(img, mask)
 
-        return 0
+        mask[mask > 0.5] = 1
+        mask[mask <= 0.5] = 0
 
+        out["orig_size"] = torch.Tensor([img.size(1), img.size(2)])
+
+        out["img_orig"] = self.pad_(img)
+        out["mask_orig"] = self.pad_(mask)
+
+        img, mask = self.normalize_pad(img), self.normalize_pad(mask)
+
+        out["id"] = img_id
+        out["img"] = img
+        out["mask"] = mask
+        return out
+#+end_src
+
+** test
+#+begin_src python :tangle ~/projects/ultrasound/dataloaders/mediscan.py :mkdirp yes
 if __name__ == "__main__":
-    d = CustomDataset()
+    from torchvision import transforms as T
+    from torchvision.utils import save_image
+    # d = CustomDataset()
+    proj_dir = "/home/lfz/projects/ultrasound"
+    out_dir=os.path.join(proj_dir,"runs","fetasam_agg1")
+    sam_input_size = 1024
+    sam_trans = ResizeLongestSide(sam_input_size)
+    transform = T.Compose([
+        T.ToPILImage(),
+        T.ColorJitter(brightness=0.4,
+                    contrast=0.4,
+                    saturation=0.4,
+                    hue=0.1),
+        T.RandomHorizontalFlip(),
+        T.RandomAffine(22, scale=(0.75, 1.25)),
+        T.ToTensor()])
+
+    train, test = setup_data(img_dir=os.path.join(proj_dir,"data","mediscan-seg"), out_dir=out_dir)
+    ds = Mediscan(train, transform, sam_trans)
+    next(iter(ds))
+#+end_src
+
+* Train
+** import
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+import os
+import wandb
+from tqdm import tqdm
+from dataloaders.mediscan import *
+from models.fetasam import *
+from mobile_sam.utils.transforms import ResizeLongestSide
+from torch.utils.data import DataLoader
+from torchvision import transforms as T
+from torch.optim import Adam
+from statistics import mean
+#+end_src
+
+** Hyper-paprameters
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+assert torch.cuda.is_available(), "GPU not available"
+device = "cuda"
+
+proj_dir = "/home/lfz/projects/ultrasound"
+target_length = 1024
+sam_trans = ResizeLongestSide(target_length)
+train_batch_size = 2
+val_batch_size = 1
+transform = T.Compose([
+    T.ToPILImage(),
+    T.ColorJitter(brightness=0.4,
+                  contrast=0.4,
+                  saturation=0.4,
+                  hue=0.1),
+    T.RandomHorizontalFlip(),
+    T.RandomAffine(22, scale=(0.75, 1.25)),
+    T.ToTensor()])
+target_transform = T.Compose([
+    T.ToPILImage(),
+    T.ToTensor()])
+
+model_type="vit_t"
+sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt"
+
+config = {"lr": 1e-4,
+          "weight_decay": 0,
+          "num_epochs": 100,
+          "run_name": "fetasam_agg1"}
+
+out_dir=os.path.join(proj_dir,"runs",config["run_name"])
+os.makedirs(out_dir, exist_ok=True)
+os.makedirs(os.path.join(out_dir, "preds"), exist_ok=True)
+#+end_src
+
+** Dataloaders
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+train, val = setup_data(img_dir=os.path.join(proj_dir,"data","mediscan-seg"), out_dir=out_dir)
+train_dataset = Mediscan(train, transform, sam_trans)
+train_dataloader = DataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
+val_dataset = Mediscan(val, target_transform, sam_trans)
+val_dataloader = DataLoader(dataset=val_dataset, batch_size=val_batch_size, shuffle=False)
+
+#+end_src
+
+** Model
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+model = FetaSam(model_type, sam_checkpoint).cuda()
+model.to(device)
+
+# Freezing weights
+for name, param in model.named_parameters():
+    tmp = name.split(".")[1]
+    if tmp == "image_encoder" or tmp == "prompt_encoder":
+        param.requires_grad_(False)
+#+end_src
+
+** Optimizer
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+optimizer = Adam(model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"])
+#+end_src
+
+** Wandb
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+wandb.login()
+wandb.init(
+    project="sam",
+    name = config["run_name"],
+    config=config)
+#+end_src
+
+** Loss & Metrics
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+bce_loss = nn.BCELoss()
+
+def get_ji(predict, target):
+    predict = predict + 1
+    target = target + 1
+    tp = np.sum(((predict == 2) * (target == 2)) * (target > 0))
+    fp = np.sum(((predict == 2) * (target == 1)) * (target > 0))
+    fn = np.sum(((predict == 1) * (target == 2)) * (target > 0))
+    ji = float(np.nan_to_num(tp / (tp + fp + fn)))
+    return ji
+
+def norm_batch(x):
+    bs = x.shape[0]
+    Isize = x.shape[-1]
+    min_value = x.view(bs, -1).min(dim=1)[0].repeat(1, 1, 1, 1).permute(3, 2, 1, 0).repeat(1, 1, Isize, Isize)
+    max_value = x.view(bs, -1).max(dim=1)[0].repeat(1, 1, 1, 1).permute(3, 2, 1, 0).repeat(1, 1, Isize, Isize)
+    x = (x - min_value) / (max_value - min_value + 1e-6)
+    return x
+
+def get_dice_loss(y_pred, y_true, smooth=1):
+    alpha = 0.5
+    beta = 0.5
+
+    tp = torch.sum(y_true * y_pred, dim=(1, 2, 3))
+    fn = torch.sum(y_true * (1 - y_pred), dim=(1, 2, 3))
+    fp = torch.sum((1 - y_true) * y_pred, dim=(1, 2, 3))
+    tversky_class = (tp + smooth) / (tp + alpha * fn + beta * fp + smooth)
+    return 1 - torch.mean(tversky_class)
+
+def get_loss(pred, mask):
+    mask = F.interpolate(mask, (256,256), mode='nearest')
+    dice_loss = get_dice_loss(pred, mask)
+    loss = bce_loss(pred, mask) + dice_loss
+    # print(dice_loss.item(), loss.item())
+    return loss
+#+end_src
+
+** Save images
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+def save_img(batch, pred):
+    pred = F.interpolate(pred, (1024, 1024), mode="bilinear", align_corners=False)
+    pred = pred.detach().cpu()
+    pred[pred<=0.5]=0.0
+    pred[pred>0.5]=1.0
+
+    N = batch["img"].size()[0]
+    orig_sizes = batch["orig_size"].detach().cpu().numpy()
+    
+    for i in range(N):
+        id_ = batch["id"][i]
+        img = batch["img_orig"][i]
+        mask = batch["mask_orig"][i]
+        orig_size = orig_sizes[i].astype(int)
+        img = torch.permute(img, (1, 2, 0)).detach().cpu().numpy()
+        img = img[:orig_size[0], :orig_size[1],:]
+        mask = torch.permute(mask, (1, 2, 0)).detach().cpu().numpy()
+        mask = mask[:orig_size[0], :orig_size[1],:]
+
+        p = pred[i]
+        p = torch.permute(p, (1, 2, 0)).detach().cpu().numpy()
+        p = p[:mask.shape[0], :mask.shape[1],:]
+
+        overlay1 = np.concatenate((np.zeros((mask.shape[0], mask.shape[1], 2)), mask), axis=2)
+        overlay1 = (overlay1*255).astype(np.uint8)
+
+        overlay2 = np.concatenate((p, np.zeros((p.shape[0], p.shape[1], 2))), axis=2)
+        overlay2 = (overlay2*255).astype(np.uint8)
+
+        img = (img*255).astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        img1 = cv2.addWeighted(img,0.8, overlay1,0.2,0)
+        img2 = cv2.addWeighted(img,0.8, overlay2,0.2,0)
+        out = np.hstack((img1, img2))
+       
+        cv2.imwrite(os.path.join(out_dir, "preds", str(id_)+'.png'), out)
+#+end_src
+
+** Training
+#+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
+best_iou = 0
+for epoch in range(config["num_epochs"]):
+    print(f'EPOCH: {epoch}')
+    pbar = tqdm(train_dataloader)
+
+    model.train()
+    losses = []
+    for batch in pbar:
+      # forward pass
+      img = batch["img"].cuda()
+      mask_gt = batch["mask"].cuda()
+
+      mask_pred = model(img)
+      mask_pred = norm_batch(mask_pred)
+      loss = get_loss(mask_pred, mask_gt)
+
+      # backward pass (compute gradients of parameters w.r.t. loss)
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+      wandb.log({"train_loss_step": loss.item()})
+      pbar.set_postfix({'loss': loss.item()})
+      losses.append(loss.item())
+    print(f'train_loss_epoch: {mean(losses)}')
+    wandb.log({"train_loss_epoch": mean(losses)})
+
+    model.eval()
+    losses = []
+    iou = []
+    pbar = tqdm(val_dataloader)
+    for batch in pbar:
+      # forward pass
+      img = batch["img"].cuda()
+      mask_gt = batch["mask"].cuda()
+
+      with torch.no_grad():
+         mask_pred = model(img)
+
+      mask_pred = norm_batch(mask_pred)
+      loss = get_loss(mask_pred, mask_gt)
+
+      save_img(batch,mask_pred)
+
+      wandb.log({"val_loss_step": loss.item()})
+      pbar.set_postfix({'loss': loss.item()})
+      losses.append(loss.item())
+
+      mask_pred[mask_pred > 0.5] = 1.0
+      mask_pred[mask_pred <= 0.5] = 0.0
+
+      mask_gt = F.interpolate(mask_gt, (256,256), mode='nearest')
+      ji = get_ji(mask_pred.squeeze(1).detach().cpu().numpy(), mask_gt.squeeze(1).detach().cpu().numpy())
+      wandb.log({"val_iou_step": ji})
+      iou.append(ji)
+
+    iou_e = mean(iou)
+    print(f'val_loss_epoch: {mean(losses)}')
+    print(f'val_iou_epoch: {iou_e}')
+    wandb.log({"val_loss_epoch": mean(losses)})
+    wandb.log({"val_iou_epoch": iou_e})
+
+    if iou_e > best_iou:
+        print(f"New best IoU : {iou_e}")
+        torch.save(model.state_dict(), os.path.join(out_dir,"fetasam_best.pth"))
+        best_iou = iou_e
+        wandb.log({"val_best_iou": best_iou})
 #+end_src
 
