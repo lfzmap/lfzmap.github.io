@@ -346,10 +346,10 @@ target_transform = T.Compose([
 model_type="vit_t"
 sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt"
 
-config = {"lr": 1e-4,
-          "weight_decay": 0,
+config = {"lr": 1e-5,
+          "weight_decay": 1e-4,
           "num_epochs": 100,
-          "run_name": "fetasam_agg1"}
+          "run_name": "fetasam_agg2"}
 
 out_dir=os.path.join(proj_dir,"runs",config["run_name"])
 os.makedirs(out_dir, exist_ok=True)
