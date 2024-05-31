@@ -21,11 +21,13 @@ Prevent package.el loading packages prior to their init-file loading.
 ;; Ask for textual confirmation instead of GUI
 (setq use-file-dialog nil)
 #+end_src
+
 * Recentf mode 
 ** C-x f : recent files
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
   (recentf-mode 1)
 #+end_src
+
 * Line Number
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; Display line numbers in every buffer
@@ -38,6 +40,7 @@ Prevent package.el loading packages prior to their init-file loading.
                 eshell-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 #+end_src
+
 * Package Manager-straight.el
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
   ;; package manager
@@ -119,6 +122,7 @@ Prevent package.el loading packages prior to their init-file loading.
 (set-face-attribute 'fixed-pitch nil :font "Iosevka comfy")
 (set-face-attribute 'variable-pitch nil :font "Darwin Serif Regular ALPHA-18")
 #+end_src
+
 * Set Theme
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; load theme
@@ -141,6 +145,7 @@ Prevent package.el loading packages prior to their init-file loading.
 ;; ;; Load the theme of choice:
 ;; (load-theme 'ef-spring :no-confirm)
 #+end_src
+
 * Better Modeline
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package doom-modeline
@@ -385,6 +390,7 @@ Prevent package.el loading packages prior to their init-file loading.
   :after yaml-mode
   :hook (yaml-mode . yaml-pro-mode))
 #+end_src
+
 * Org-mode
 ** Bindings
 *** Tangle : C-c C-v t
@@ -502,6 +508,7 @@ Prevent package.el loading packages prior to their init-file loading.
 (add-to-list 'auto-mode-alist '("\\.js\\'" . js2-mode))
 (setq js-indent-level 2)
 #+end_src
+
 * Syntax Highlighting
 ** Treesitter
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
@@ -605,6 +612,7 @@ All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package xkcd)
 #+end_src
+
 * Weather forecast
 - wttrin
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
@@ -615,6 +623,7 @@ All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets
 (wttrin-default-cities '("Chennai"))
 (url-user-agent "curl"))
 #+end_src
+
 * Parrot
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; (use-package parrot
@@ -625,6 +634,7 @@ All code snippets are here : [[id:c64efc36-aefc-4aff-b7d8-9aedbbe10308][Snippets
 ;; (add-hook 'parrot-click-hook 'flyspell-buffer)
 
 #+end_src
+
 * Cowsay-fortune
 sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fortunes-off fortunes-ubuntu-server
 
@@ -644,12 +654,14 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 
 ;; (setq initial-scratch-message ";; Well hello there... ☕\n\n")
 #+end_src
+
 * Fireplace
 - C-= sound
 - Put mp3 file from repo into the filepath at variable *fireplace-sound-file-path*
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package fireplace)
 #+end_src
+
 * Zone
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 ;; (use-package zone-matrix
@@ -669,23 +681,52 @@ sudo apt-get install cowsay and fortunes fortunes-debian-hints fortunes-min fort
 )
 )
 (setq zone-when-idle 60)
-;; (setq zone-timer (run-with-idle-timer 60 t 'zone))
+(setq zone-timer (run-with-idle-timer 60 t 'zone))
 #+end_src
+
 * Hacker News
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package hackernews)
 #+end_src
+
 * Olivetti - Center content
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package olivetti)
 (setq olivetti-body-width 0.6)
 (setq olivetti-style 'fringes)
 #+end_src
+
 * Emojify
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (use-package emojify
   :hook (after-init . global-emojify-mode))
 #+end_src
+
+* Pomodoro Timer
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package pomm
+  :straight t
+  ;; :commands (pomm pomm-third-time)
+)
+(setq pomm-audio-player-executable "/usr/bin/mpg123")
+(setq pomm-audio-enabled t)
+(setq alert-default-style 'libnotify)
+(setq pomm-audio-tick-enabled t)
+#+end_src
+
+* Eww browser
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+;; (use-package eww
+;; :init
+;; (setq browse-url-browser-function 'eww-browse-url
+;;         shr-use-colors nil
+;;         shr-bullet "• "
+;;         shr-folding-mode t
+;;         eww-search-prefix "https://duckduckgo.com/html?q="
+;;         url-privacy-level '(email agent cookies lastloc)))
+
+#+end_src
+
 * elisp block for checking
 #+begin_src emacs-lisp :result outputs
 ;; (treesit-available-p)

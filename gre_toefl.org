@@ -61,12 +61,24 @@ Primarily for GRE but they have 2 week for toefl.
 #+ATTR_ORG: :width 800
 [[./org-files/img/gre.png]]
 
-** Analytical writing
-https://www.ets.org/gre/test-takers/general-test/prepare/content/analytical-writing.html
-** Verbal Reasoning
+
+** 1: Analytical writing 
+*** Issue essay 1Q
+*** https://www.ets.org/gre/test-takers/general-test/prepare/content/analytical-writing.html
+** 2: Verbal Reasoning
+*** 2.1 Text completion 3Q
+*** 2.1 Sentence equivalence 4Q
+*** 2.1 Reading comprehension 5Q
+*** 2.2 Text completion 3Q
+*** 2.2 Sentence equivalence 4Q
+*** 2.2 Reading comprehension 5Q
 https://www.ets.org/gre/test-takers/general-test/prepare/content/verbal-reasoning.html
-*** Reading comprehension
-*** Text completion
-*** Sentence equivalence
+
 ** Quantitative Reasoning
 https://www.ets.org/gre/test-takers/general-test/prepare/content/quantitative-reasoning.html
+
+Issue essay
+no more argument essay
+
+Section 1 : Writing
+Section 2: Verbal

@@ -5,7 +5,7 @@
 
 Experimental model architecture for real-time segmentation of Fetal ultrasound images.
 
-* Model
+* MobileSAM+Agg
 ** Necessary Imports
 #+begin_src python :tangle ~/projects/ultrasound/models/fetasam.py :makedirp yes
 import torch
@@ -135,7 +135,149 @@ if __name__ == "__main__":
     print(x.size(), o.size())
 #+end_src
 
-* Dataset 
+* SAM+Agg
+** Necessary Imports
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam2.py :makedirp yes
+import torch
+import torch.nn as nn
+import numpy as np
+from segment_anything import sam_model_registry
+#+end_src
+
+** Layer norm
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam2.py :makedirp yes
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        return x
+#+end_src
+
+** Aggregator
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam2.py :makedirp yes
+class AggregatorBlock(nn.Module):
+    def __init__(self,m,n):
+        super(AggregatorBlock, self).__init__()
+        self.downconv = nn.Sequential(
+            nn.Conv2d(m, n, kernel_size=(1, 1), stride=(1, 1), bias=False),
+            LayerNorm2d(n),
+            nn.GELU(approximate='none'))
+        self.conv = nn.Sequential(
+            nn.Conv2d(n, n, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False),
+            LayerNorm2d(n),
+            nn.GELU(approximate='none'))
+
+    def forward(self, x, m_prev=None, phi_prev=None):
+        x = x.permute(0,3,1,2)
+
+        f = self.downconv(x)
+        if m_prev is None and phi_prev is None:
+            m = f
+        else:
+            m = f + phi_prev + m_prev
+        phi = self.conv(m)
+        return phi,m
+
+class Aggregator(nn.Module):
+    def __init__(self):
+        super(Aggregator, self).__init__()
+        self.aggregators = nn.ModuleList()
+        for i in range(9,12):
+            agg = AggregatorBlock(768,512)
+            self.aggregators.append(agg)
+
+        self.fusion = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1,1), bias=False),
+            LayerNorm2d(512),
+            nn.GELU(approximate='none'),
+            nn.Conv2d(512, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False),
+            LayerNorm2d(256),
+            nn.GELU(approximate='none'),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False),
+            LayerNorm2d(256),
+            nn.GELU(approximate='none'),
+            nn.Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1), bias=False),
+            LayerNorm2d(256),
+            nn.GELU(approximate='none'),)
+
+    def forward(self, x):
+        phi,m = self.aggregators[0](x["9"])
+        for i in range(10,12):
+            phi,m = self.aggregators[11-i](x[str(i)],m, phi)
+        out = self.fusion(phi)
+        return out
+#+end_src
+
+** FetaSAM
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam2.py :makedirp yes
+class FetaSam(nn.Module):
+    def __init__(self, model_type, sam_checkpoint):
+        super(FetaSam, self).__init__()
+        self.activation = {}        # select sam model type and load weights
+        self.model_type = model_type 
+        self.sam_checkpoint = sam_checkpoint
+        self.model = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        self.model.image_encoder.eval()
+        print("Sam weights loaded")
+        self.hooks = []
+        for i in range(9,12):
+            self.hooks.append(self.model.image_encoder.blocks[i].register_forward_hook(self.getActivation(str(i))))
+        self.aggregator = Aggregator().cuda()
+
+        with torch.no_grad():
+            self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
+ 
+    def getActivation(self,name):
+        # the hook signature
+        def hook(model, input, output):
+            self.activation[name] = output.detach()
+        return hook
+        
+    @torch.no_grad()
+    def encode_img(self, x):
+        # (B,3,1024,1024) -> (B,256,64,64)
+        img_embed = self.model.image_encoder(x) 
+        return img_embed
+
+    def decode_mask(self, img_embed, prompt_embed):
+        pred, iou = self.model.mask_decoder(
+            image_embeddings=img_embed,
+            image_pe=self.model.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=self.sparse_embeddings_none.cuda(),
+            dense_prompt_embeddings=prompt_embed,
+            multimask_output=False) #(1,256,256)
+        return pred
+ 
+    def forward(self, x):
+        img_embed = self.encode_img(x)
+        prompt_embed = self.aggregator(self.activation)
+        mask = self.decode_mask(img_embed, prompt_embed)
+        return mask
+#+end_src
+
+**  test
+#+begin_src python :tangle ~/projects/ultrasound/models/fetasam2.py :makedirp yes
+if __name__ == "__main__":
+    import torch
+    from torchinfo import summary
+    model = FetaSam(
+        model_type="vit_b",
+        sam_checkpoint="/media/lfz/New Volume/ultrasound/weights/sam_vit_b.pth").cuda()
+    x = torch.randn(2, 3, 1024, 1024).cuda()
+    o = model(x)
+    # print(model)
+    print(x.size(), o.size())
+#+end_src
+
+* Mediscan 
 ** Why different resizing?
 The `resize_longest_distance` function in the SAM (Segment Anything Model) code likely serves to standardize the input image size by resizing the longest dimension to a specific value while maintaining the aspect ratio. This approach is commonly used in computer vision for several reasons:
 
@@ -183,20 +325,28 @@ from torch.nn import functional as F
 def setup_data(img_dir, out_dir):
     print("setting up mediscan data")
 
-    imgs = {}
-    for label in os.listdir(img_dir):
-        imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
+    # imgs = {}
+    # for label in os.listdir(img_dir):
+    #     imgs[label] = [os.path.join(img_dir, label, "images", x) for x in os.listdir(os.path.join(img_dir, label, "images"))]
 
-    train = []
-    test = []
+    # train = []
+    # test = []
 
-    for label in imgs:
-        random.shuffle(imgs[label])
-        train_split = imgs[label][:int(0.9*(len(imgs[label])))]
-        train += train_split
-        tmp = imgs[label][int(0.9*(len(imgs[label]))):]
-        random.shuffle(tmp)
-        test += tmp
+    # for label in imgs:
+    #     random.shuffle(imgs[label])
+    #     train_split = imgs[label][:int(0.9*(len(imgs[label])))]
+    #     train += train_split
+    #     tmp = imgs[label][int(0.9*(len(imgs[label]))):]
+    #     random.shuffle(tmp)
+    #     test += tmp
+
+    imgs = []
+    for i in os.listdir(os.path.join(img_dir,"images")):
+        imgs.append(os.path.join(img_dir, "images",i))
+    random.shuffle(imgs)
+    imgs = random.sample(imgs, 5000)
+    train = imgs[:int(0.8*len(imgs))]
+    test = imgs[int(0.8*len(imgs)):]
 
     random.shuffle(train)
     random.shuffle(test)
@@ -253,6 +403,7 @@ class Mediscan(Dataset):
         out = {}
         img_path = self.img_paths[idx]
         mask_path = img_path.replace("images", "masks")
+        mask_path = mask_path.replace("png", "bmp")
 
         img_id = img_path.split("/")[-3]+"_"+img_path.split("/")[-1][:-4]
 
@@ -309,10 +460,11 @@ if __name__ == "__main__":
 ** import
 #+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
 import os
+import sys
 import wandb
 from tqdm import tqdm
 from dataloaders.mediscan import *
-from models.fetasam import *
+from models.fetasam2 import *
 from mobile_sam.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 from torchvision import transforms as T
@@ -325,7 +477,7 @@ from statistics import mean
 assert torch.cuda.is_available(), "GPU not available"
 device = "cuda"
 
-proj_dir = "/home/lfz/projects/ultrasound"
+data_dir = "/media/lfz/New Volume/ultrasound"
 target_length = 1024
 sam_trans = ResizeLongestSide(target_length)
 train_batch_size = 2
@@ -343,27 +495,26 @@ target_transform = T.Compose([
     T.ToPILImage(),
     T.ToTensor()])
 
-model_type="vit_t"
-sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt"
+model_type="vit_b"
+sam_checkpoint=os.path.join(data_dir,"weights/sam_vit_b.pth")
 
-config = {"lr": 1e-5,
-          "weight_decay": 1e-4,
-          "num_epochs": 100,
-          "run_name": "fetasam_agg2"}
+config = {"lr": 1e-4,
+          "weight_decay": 1e-5,
+          "num_epochs": 20,
+          "run_name": "sam_agg_01"}
 
-out_dir=os.path.join(proj_dir,"runs",config["run_name"])
+out_dir=os.path.join(data_dir,"runs",config["run_name"])
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(os.path.join(out_dir, "preds"), exist_ok=True)
 #+end_src
 
 ** Dataloaders
 #+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
-train, val = setup_data(img_dir=os.path.join(proj_dir,"data","mediscan-seg"), out_dir=out_dir)
+train, val = setup_data(img_dir=os.path.join(data_dir,"data","fpus23-seg"), out_dir=out_dir)
 train_dataset = Mediscan(train, transform, sam_trans)
 train_dataloader = DataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
 val_dataset = Mediscan(val, target_transform, sam_trans)
 val_dataloader = DataLoader(dataset=val_dataset, batch_size=val_batch_size, shuffle=False)
-
 #+end_src
 
 ** Model
@@ -374,8 +525,12 @@ model.to(device)
 # Freezing weights
 for name, param in model.named_parameters():
     tmp = name.split(".")[1]
-    if tmp == "image_encoder" or tmp == "prompt_encoder":
+    if tmp == "image_encoder" or tmp == "prompt_encoder" or tmp == "mask_decoder":
         param.requires_grad_(False)
+total_params  = sum(p.numel() for p in model.parameters())/1000000.0
+train_params  = sum(p.numel() for p in model.parameters() if p.requires_grad)/1000000.0
+print(f"Total Params: {total_params:.2f} M, Trainable Params: {train_params:.2f} M")
+# sys.exit()
 #+end_src
 
 ** Optimizer
@@ -427,7 +582,6 @@ def get_loss(pred, mask):
     mask = F.interpolate(mask, (256,256), mode='nearest')
     dice_loss = get_dice_loss(pred, mask)
     loss = bce_loss(pred, mask) + dice_loss
-    # print(dice_loss.item(), loss.item())
     return loss
 #+end_src
 
@@ -517,7 +671,7 @@ for epoch in range(config["num_epochs"]):
 
       save_img(batch,mask_pred)
 
-      wandb.log({"val_loss_step": loss.item()})
+      # wandb.log({"val_loss_step": loss.item()})
       pbar.set_postfix({'loss': loss.item()})
       losses.append(loss.item())
 
@@ -526,7 +680,7 @@ for epoch in range(config["num_epochs"]):
 
       mask_gt = F.interpolate(mask_gt, (256,256), mode='nearest')
       ji = get_ji(mask_pred.squeeze(1).detach().cpu().numpy(), mask_gt.squeeze(1).detach().cpu().numpy())
-      wandb.log({"val_iou_step": ji})
+      # wandb.log({"val_iou_step": ji})
       iou.append(ji)
 
     iou_e = mean(iou)
@@ -542,3 +696,62 @@ for epoch in range(config["num_epochs"]):
         wandb.log({"val_best_iou": best_iou})
 #+end_src
 
+* Runs
+** sam_agg_01
+*** Agg = last 3 blocks of img encoder
+*** Freeze img encoder and mask decoder, train Agg using FPUS23
+*** LR = 1e-4
+*** WD = 1e-5
+***  Train: 4000; Test: 1000
+*** Total Params: 106.20 M, Trainable Params: 12.46 M
+* Move fpus23 masks to standalone fpus23-seg 
+#+begin_src python 
+import os
+import shutil
+
+data_dir = "/home/lfz/projects/ultrasound/data/fpus23/Dataset/masks"
+dest_dir = "/media/lfz/New Volume/ultrasound/data/fpus23-seg"
+
+for root, dirs, files in os.walk(data_dir):
+        for file in files:
+                if file.endswith(".bmp"):
+                        x = root.split("/")
+                        mask_name = x[-2]+"_"+x[-1]+"_"+file
+                        img_root = root.replace("masks", "four_poses")
+                        img_name = x[-2]+"_"+x[-1]+"_"+file[:-4]+".png"
+                        print(img_name, mask_name)
+
+                        shutil.copy2(
+                                os.path.join(root,file),
+                                os.path.join(dest_dir,"masks", mask_name))
+
+                        shutil.copy2(
+                                img_root+".png",
+                                os.path.join(dest_dir,"images", img_name))
+#+end_src
+
+* Create overlay for fpus23-seg
+#+begin_src python 
+import os
+import cv2
+import numpy as np
+
+data_dir = "/home/lfz/projects/ultrasound/data/fpus23-seg"
+dest_dir = "/media/lfz/New Volume/fpus23-seg"
+
+for path in os.listdir(data_dir+"/images"):
+    img_path = os.path.join(data_dir+"/images", path)
+    mask_path = os.path.join(data_dir+"/masks", path.replace("png", "bmp"))
+
+    img = cv2.imread(img_path)
+   mask = cv2.imread(mask_path,0)
+    mask[mask>0]=1
+    mask = np.expand_dims(mask, axis=2)
+    overlay = np.concatenate((mask, np.zeros((mask.shape[0], mask.shape[1], 2))), axis=2)
+    overlay = (overlay*255).astype(np.uint8)
+
+    out = cv2.addWeighted(img,0.8, overlay,0.2,0)
+
+    cv2.imwrite(dest_dir+"/"+path, out)
+    # break
+#+end_src
