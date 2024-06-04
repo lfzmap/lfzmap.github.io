@@ -697,13 +697,10 @@ for epoch in range(config["num_epochs"]):
 #+end_src
 
 * Runs
-** sam_agg_01
-*** Agg = last 3 blocks of img encoder
-*** Freeze img encoder and mask decoder, train Agg using FPUS23
-*** LR = 1e-4
-*** WD = 1e-5
-***  Train: 4000; Test: 1000
 *** Total Params: 106.20 M, Trainable Params: 12.46 M
+*** Total Params: 106.20 M, Trainable Params: 16M
+** medsam_fpus_agg1decoder_lr4_wd0
+** medsam_mediscan_agg1+decoder_lr1e-4_wd0
 * Move fpus23 masks to standalone fpus23-seg 
 #+begin_src python 
 import os
