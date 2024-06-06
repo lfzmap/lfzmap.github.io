@@ -3,6 +3,20 @@
 :END:
 #+title: Segmentation
 
+\begin{equation*}
+\{y_i\} = Seg(I)
+\end{equation*}
+where y_i = (m_i, c_i). $I \in R^{3\times H\times W}$ is the input image.
+
+
+$m_i$ is a binary mask and $c_i$ is it's class label.
+Here $i = 1,2,..,G$. $G$ is the number of output masks.
+
+Types of segmentation:
+1. Semantic seg (SS)
+2. Intance seg (IS)
+3. Panoptic seg (PS)
+
 * [[id:8e251593-6a3c-4fb5-bdbb-2e901e184468][UNet]] 
 
 * [[id:c2ef2104-39a5-4e0b-a07a-425de90b641f][SAM]]  

@@ -60,7 +60,7 @@ class Aggregator(nn.Module):
     def __init__(self):
         super(Aggregator, self).__init__()
         self.aggregators = nn.ModuleList()
-        for i in range(0,12):
+        for i in range(0,6):
             agg = AggregatorBlock(768,512)
             self.aggregators.append(agg)
 
@@ -80,7 +80,7 @@ class Aggregator(nn.Module):
 
     def forward(self, x):
         phi,m = self.aggregators[0](x["0"])
-        for i in range(1,12):
+        for i in range(1,6):
             phi,m = self.aggregators[i](x[str(i)],m, phi)
         out = self.fusion(phi)
         return out
@@ -98,7 +98,7 @@ class FetaSam(nn.Module):
         self.model.image_encoder.eval()
         print("Sam weights loaded")
         self.hooks = []
-        for i in range(0,12):
+        for i in range(0,6):
             self.hooks.append(self.model.image_encoder.blocks[i].register_forward_hook(self.getActivation(str(i))))
         self.aggregator = Aggregator().cuda()
 
@@ -236,18 +236,18 @@ class Aggregator(nn.Module):
             LayerNorm2d(256),
             nn.GELU(approximate='none'),)
 
-    def forward(self, x):
+    def forward(self, xconv, x):
         B,k,C = x["0"].size()
         kk = int(math.sqrt(k))
         xx = x["0"].view(B,kk,kk,C)
         xx = xx.permute(0,3,1,2)
         m = self.conv0(xx)
-        phi = self.conv1(m)
+        phi0 = self.conv1(m)
         m = self.maxpool(m)
-
-        phi,m = self.aggregator1(x["1"],m,phi)
+        phi,m = self.aggregator1(x["1"],m,phi0)
         phi,m = self.aggregator2(x["2"],m, phi)
         phi,m = self.aggregator3(x["3"],m, phi)
+        phi = phi + xconv + phi0
         out = self.fusion(phi)
         return out
 #+end_src
@@ -270,6 +270,23 @@ class FetaSam(nn.Module):
         self.aggregator = Aggregator().cuda()
         with torch.no_grad():
             self.sparse_embeddings_none, self.dense_embeddings_none = self.model.prompt_encoder(points=None, boxes=None, masks=None)
+        self.x_conv = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1,1), bias=False),
+            LayerNorm2d(64),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1,1), bias=False),
+            LayerNorm2d(128),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1,1), bias=False),
+            LayerNorm2d(256),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1,1), bias=False),
+            LayerNorm2d(256),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+            nn.ReLU())
  
     def getActivation(self,name):
         # the hook signature
@@ -295,7 +312,8 @@ class FetaSam(nn.Module):
  
     def forward(self, x):
         img_embed = self.encode_img(x)
-        prompt_embed = self.aggregator(self.activation)
+        xconv = self.x_conv(x)
+        prompt_embed = self.aggregator(xconv,self.activation)
         mask = self.decode_mask(img_embed, prompt_embed)
         return mask
 #+end_src
@@ -307,10 +325,10 @@ if __name__ == "__main__":
     from torchinfo import summary
     model = FetaSam(
         model_type="vit_t",
-        sam_checkpoint="/home/lfz/projects/ultrasound/weights/mobile_sam.pt").cuda()
+        sam_checkpoint="/media/lfz/New Volume/ultrasound/weights/mobilesam_vit_b.pt").cuda()
     x = torch.randn(2, 3, 1024, 1024).cuda()
-    o = model(x)
     print(model)
+    o = model(x)
     print(x.size(), o.size())
 #+end_src
 
@@ -527,8 +545,8 @@ import sys
 import wandb
 from tqdm import tqdm
 from dataloaders.mediscan import *
-# from models.fetasam2 import *
-from models.fetasam import *
+from models.fetasam2 import *
+#from models.fetasam import *
 from mobile_sam.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 from torchvision import transforms as T
@@ -547,7 +565,7 @@ data_dir = "/media/lfz/New Volume/ultrasound"
 target_length = 1024
 
 sam_trans = ResizeLongestSide(target_length)
-train_batch_size = 4
+train_batch_size = 2
 val_batch_size = 1
 
 transform = T.Compose([
@@ -563,15 +581,15 @@ target_transform = T.Compose([
     T.ToPILImage(),
     T.ToTensor()])
 
-model_type="vit_t"
-sam_checkpoint=os.path.join(data_dir,"weights/mobilesam_vit_b.pt")
+model_type="vit_b"
+sam_checkpoint=os.path.join(data_dir,"weights/sam_vit_b.pth")
 
 config = {"lr": 1e-3,
           "weight_decay": 1e-4,
           "momentum": 0.9,
           "num_epochs": 100,
           "grad_clip": 1.0,
-          "run_name": "mobilesam_mediscan_agg_sgd"}
+          "run_name": "sam_mediscan_agg_pretrained_sgd"}
 #+end_src
 
 ** Dataloaders
@@ -597,8 +615,9 @@ val_dataloader = DataLoader(dataset=val_dataset, batch_size=val_batch_size, shuf
 ** Load model
 #+begin_src python :tangle ~/projects/ultrasound/train.py :mkdirp yes
 model = FetaSam(model_type, sam_checkpoint).cuda()
-#model_path = "runs/mobilesam_mediscan_aggdecoder_lr4_wd0/fetasam_best.pth"
-#model.load_state_dict(torch.load(model_path))
+ckpt = os.path.join(data_dir,"runs","sam_fpus_agg_sgd","fetasam_best.pth")
+checkpoint = torch.load(ckpt)
+model.load_state_dict(checkpoint["model"])
 model.to(device)
 
 # Freezing weights
