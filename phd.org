@@ -1,4 +1,14 @@
-#+title: GRE-TOEFL
+#+title: PhD
+
+* Apply
+
+|-----------------------+--------+----------+--------------------------+--------+------|
+| Program               | Open   | Deadline | Reqs                     | Fees   | Link |
+|-----------------------+--------+----------+--------------------------+--------+------|
+| Erasmus MS InterMaths | Nov 10 | Feb 29   | 1 page intent letter     | 0      | [[https://www.intermaths.eu/erasmus-mundus/apply][Link]] |
+| Erasmus MS AI         | Nov 11 | Jan 01   | LOM (600 w), 1 min video |        | [[https://www.upf.edu/web/emai/about-this-master][Link]] |
+| GSU Math              |        | Sep 15   |                          | $60=5k |      |
+| BSAP Lab Edinubrgh    |        |          | Email, CV                |        |      |
 
 * TOEFL iBT
 ** Structure
@@ -19,8 +29,8 @@
 *** Reading:
 https://www.ets.org/toefl/test-takers/ibt/about/content/reading.html
 
-Read and understand materials used in an academic environment.
-Excerpts from university-level textbooks.
+- Read and understand materials used in an academic environment.
+- Excerpts from university-level textbooks.
 
 *** Listening:
 https://www.ets.org/toefl/test-takers/ibt/about/content/listening.html
@@ -43,14 +53,6 @@ require you to combine your English-language skills : listening, reading and spe
 Read a short passage and listen to a short lecture, then write in response to what you read and listened to.
 **** Q2: Writing for an Academic Discussion task
 State and support an opinion in an online classroom discussion.
-
-** Prep materials
-*** https://www.testglider.com/
-1 free test
-***  https://www.gregmat.com/pricing
-Primarily for GRE but they have 2 week for toefl.
-*** Free
-****  https://studycentrals.com/2020/05/28/free-toefl-mock-tests/
 
 * GRE
 340 score

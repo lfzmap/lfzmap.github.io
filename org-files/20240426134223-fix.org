@@ -32,7 +32,6 @@ import os
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 #+end_src
 
-
 * No sound in bluetooth earphone
 Change pulseaudio to pipewire.
 https://www.reddit.com/r/Ubuntu/comments/xb24mw/no_audio_out_of_the_connected_bluetooth_headset/

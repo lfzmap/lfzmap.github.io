@@ -120,7 +120,7 @@ Prevent package.el loading packages prior to their init-file loading.
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
 (set-face-attribute 'default nil :font "Iosevka comfy")
 (set-face-attribute 'fixed-pitch nil :font "Iosevka comfy")
-(set-face-attribute 'variable-pitch nil :font "Darwin Serif Regular ALPHA-18")
+(set-face-attribute 'variable-pitch nil :font "Darwin Serif Regular ALPHA-20")
 #+end_src
 
 * Set Theme
