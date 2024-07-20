@@ -25,14 +25,26 @@
 | Total     |    |             |  120 |   120 |                       |
 |-----------+----+-------------+------+-------+-----------------------|
 
-** Sections
-*** Reading:
-https://www.ets.org/toefl/test-takers/ibt/about/content/reading.html
+** Reading
+*** https://www.ets.org/toefl/test-takers/ibt/about/content/reading.html
+*** 2 passage, 10 questions each
 
-- Read and understand materials used in an academic environment.
-- Excerpts from university-level textbooks.
+Toefl reading passage is a measurement of skills.
+#+ATTR_ORG: :width 800
+[[./org-files/img/reading1.png]]
+#+ATTR_ORG: :width 800
+[[./org-files/img/reading2.png]]
 
-*** Listening:
+GRE words are tougher than TOEFL.
+*** Important strategies:
+1. Rephrasing questions
+2. Justifying your answer
+3. Process of elimination
+*** Passage Summary
+- Identify the main idea of each paragraph of the passage
+- No need to linker on detail only the main takeaway.
+  
+** Listening:
 https://www.ets.org/toefl/test-takers/ibt/about/content/listening.html
 
 - basic comprehension
@@ -41,14 +53,14 @@ https://www.ets.org/toefl/test-takers/ibt/about/content/listening.html
 
 You can take notes on any audio item throughout the test to help you answer questions.
 
-*** Speaking:
+** Speaking:
 **** Q1 Independent Speaking Task:
 your own ideas, opinions and experiences when you respond.
 **** Questions 2,3,4: Integrated Speaking Tasks
 require you to combine your English-language skills : listening, reading and speaking.
 ****  https://www.ets.org/toefl/test-takers/ibt/about/content/speaking.html
 
-*** Writing:
+** Writing:
 **** Q1: Integrated writing task:
 Read a short passage and listen to a short lecture, then write in response to what you read and listened to.
 **** Q2: Writing for an Academic Discussion task
