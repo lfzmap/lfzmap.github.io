@@ -1,0 +1,52 @@
+:PROPERTIES:
+:ID:       8c246116-8ef7-4ea9-8594-911869a043da
+:END:
+#+title: Robotics
+
+* Configuration Space
+** Intro
+*** Links & Joints
+*A robot is a set of *Links* connected with *Joints*.
+*** Actuator
+*Actuator* deliver force & torque to the links.
+*** *End effector
+End effector* manipulate or grasp objects. Attached to a specific link
+*** Configuration
+Set of all points on a robot.
+*** Degrees of freedom (dof)
+Minimum number of *real valued* points required to represent the configuration.
+
+[[./img/coin.png]]
+
+A coin has dof of 3 => x,y,angle. There can be a fourth variable for {head, tail}. Since it is not continous dof is still 3.
+*** Configuration space (C-space)
+The n-dimensional space containing all possible configurations of a robot.
+*** Task space
+C-space of end effector.
+** Degrees of freedom of a rigid body
+degrees of freedom = (sum of freedoms of the points) − (number of independent constraints)
+  = (number of variables) − (number of independent equations)
+- Dof of rigid body in 3d space = 6, in 2d = 3
+- degrees of freedom = (sum of freedoms of the bodies) − (number of independent constraints)
+** Degrees of freedom of a robot
+Joints impose constraints.
+*** Robot joints
+[[./img/joints.png]]
+
+[[./img/joints2.png]]
+
+*** Grubler's Formula
+Consider a system of $N$ links (ground is also a link) with $J$ joints. Let $m$ be dof of rigid body (m=2 for planar and 6 for spatial). $f_{i}$ be dof of ith joint, $c_i$ be no of constraints.
+
+$dof = rigid body freedoms - joint constraints$
+$dof = m(N-1) - \sum_{i=1}^{J}c_i$
+
+w.k.t $f_i = m - c_i$
+$dof = m(N-1)-\sum_{i=1}^J{(m-f_i)}$
+
+**** $dof = m(N-J-1)+\sum_{i=1}^J{f_i}$
+
+*** Types of mechanism
+**** Open-chain
+Also known serial mechanism
+**** Closed-chain
