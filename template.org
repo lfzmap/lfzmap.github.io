@@ -1,0 +1,205 @@
+* Feature Matching
+Using ORB from OpenCV.
+
+** Cropping
+#+begin_src python :tangle ~/projects/template/orb.py :mkdirp yes
+import os
+import cv2
+import json
+from matplotlib import pyplot as plt
+import numpy as np
+
+
+template_dir = "/media/lfz/New Volume/ultrasound/data/templates"
+
+def extract_bbox(points):
+    # Separate the x and y coordinates
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    
+    # Find the minimum and maximum values for x and y
+    min_x = min(x_coords)
+    max_x = max(x_coords)
+    min_y = min(y_coords)
+    max_y = max(y_coords)
+    
+    # Return the bounding box coordinates
+    # Format: (min_x, min_y) -> (max_x, max_y)
+    return (min_x, min_y, max_x, max_y)
+
+orb = cv2.ORB_create()
+for img_id in os.listdir(template_dir):
+    if img_id.endswith("jpg"):
+        print(img_id)
+
+        img = cv2.imread(os.path.join(template_dir, img_id),0)
+        x,y = img.shape
+
+        json_filename = os.path.join(template_dir, img_id.replace("jpg", "json"))
+        with open(json_filename, "r") as f:
+            data = f.read()
+    
+        # convert str to json objs
+        data = json.loads(data)
+        mask = np.zeros_like(img, dtype=np.uint8)
+        for shape in data["shapes"]:
+            if shape["label"] in ["AC CIRCUMFERENCE","HC CIRCUMFERENCE"]:
+                print(shape["label"])
+                points = shape["points"]
+                pts = np.array(points).astype(np.int32)
+                cv2.fillPoly(mask, [pts], 255)
+                # bbox = extract_bbox(points)
+                # bbox = [int(xx) for xx in bbox]
+                # print(bbox)
+                # roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                # plt.imshow(roi, cmap="gray")
+                # plt.show()
+
+        kp, des = orb.detectAndCompute(img, mask)
+        img = cv2.addWeighted(img,0.5, mask,0.5,0)
+
+        img2 = cv2.drawKeypoints(img, kp, None, color=(0,255,0), flags=0)
+        plt.imshow(img2)
+        plt.axis('off')
+        plt.show()
+        # kp = orb.detect(roi, None)
+        # kp, des = orb.compute(roi, kp)
+
+        # # Adjust keypoint coordinates to match the original image
+        # for keypoint in kp:
+        #     keypoint.pt = (keypoint.pt[0] + bbox[0], keypoint.pt[1] + bbox[1])
+        # img2 = cv2.drawKeypoints(img, kp, None, color=(0,255,0), flags=0)
+        # plt.imshow(img2)
+        # plt.show()
+        
+#+end_src
+
+** Masking
+#+begin_src python :tangle ~/projects/template/mask.py :mkdirp yes
+import os
+import cv2
+import json
+from matplotlib import pyplot as plt
+import numpy as np
+
+
+template_dir = "/media/lfz/New Volume/ultrasound/data/templates"
+
+def extract_bbox(points):
+    # Separate the x and y coordinates
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    
+    # Find the minimum and maximum values for x and y
+    min_x = min(x_coords)
+    max_x = max(x_coords)
+    min_y = min(y_coords)
+    max_y = max(y_coords)
+    
+    # Return the bounding box coordinates
+    # Format: (min_x, min_y) -> (max_x, max_y)
+    return (min_x, min_y, max_x, max_y)
+
+orb = cv2.ORB_create()
+for img_id in os.listdir(template_dir):
+    if img_id.endswith("jpg"):
+        print(img_id)
+
+        img = cv2.imread(os.path.join(template_dir, img_id),0)
+        x,y = img.shape
+
+        kp, des = orb.detectAndCompute(img, mask=None)
+        img2 = cv2.drawKeypoints(img, kp, None, color=(0,255,0), flags=0)
+        plt.imshow(img2)
+        plt.axis('off')
+        plt.show()
+
+        # json_filename = os.path.join(template_dir, img_id.replace("jpg", "json"))
+        # with open(json_filename, "r") as f:
+        #     data = f.read()
+        # data = json.loads(data)
+    
+        # # convert str to json objs
+        # mask = np.zeros_like(img, dtype=np.uint8)
+        # for shape in data["shapes"]:
+        #     if shape["label"] not in ["AC CIRCUMFERENCE","HC CIRCUMFERENCE", "LIVER"]:
+        #         print(shape["label"])
+        #         points = shape["points"]
+        #         pts = np.array(points).astype(np.int32)
+        #         cv2.fillPoly(mask, [pts], 255)
+
+        # kp, des = orb.detectAndCompute(img, mask)
+        # img = cv2.addWeighted(img,0.5, mask,0.5,0)
+
+        # img2 = cv2.drawKeypoints(img, kp, None, color=(0,255,0), flags=0)
+        # plt.imshow(img2)
+        # plt.axis('off')
+        # plt.show()
+        
+#+end_src
+* Object Detection
+#+begin_src python :tangle ~/projects/template/yolo.py :mkdirp yes
+import os
+import cv2
+import json
+from ultralytics import YOLO
+from matplotlib import pyplot as plt
+from PIL import Image
+
+def extract_bbox(points):
+    # Separate the x and y coordinates
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    
+    # Find the minimum and maximum values for x and y
+    min_x = min(x_coords)
+    max_x = max(x_coords)
+    min_y = min(y_coords)
+    max_y = max(y_coords)
+    
+    # Return the bounding box coordinates
+    # Format: (min_x, min_y) -> (max_x, max_y)
+    return (min_x, min_y, max_x, max_y)
+
+# Create a new YOLO model from scratch
+model = YOLO("yolov8n.yaml")
+# Load a pretrained YOLO model (recommended for training)
+model = YOLO("yolov8n.pt")
+
+data_dir = "/media/lfz/New Volume/ultrasound/data/templates"
+for img_id in os.listdir(data_dir):
+    if img_id.endswith("jpg"):
+        img_path = os.path.join(data_dir, img_id)
+
+        img = cv2.imread(img_path)
+
+        json_filename = img_path.replace("jpg", "json")
+        with open(json_filename, "r") as f:
+            data = f.read()
+    
+        # convert str to json objs
+        data = json.loads(data)
+        for shape in data["shapes"]:
+            print(shape["label"])
+            points = shape["points"]
+            bbox = extract_bbox(points)
+            bbox = [int(xx) for xx in bbox]
+            print(bbox)
+
+            roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2], :]
+            results = model(source=img)
+            # Visualize the results
+            for i, r in enumerate(results):
+                print(r.probs)
+                im_bgr = r.plot()  # BGR-order numpy array
+                plt.imshow(im_bgr)
+                plt.show()
+            # for result in results:
+            #     boxes = result.boxes  # Boxes object for bounding box outputs
+            #     masks = result.masks  # Masks object for segmentation masks outputs
+            #     keypoints = result.keypoints  # Keypoints object for pose outputs
+            #     probs = result.probs  # Probs object for classification outputs
+            #     obb = result.obb  # Oriented boxes object for OBB outputs
+            #     result.show()  # display to screen
+
+#+end_src

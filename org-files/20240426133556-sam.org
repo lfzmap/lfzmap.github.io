@@ -69,6 +69,7 @@ MAE ViT
 $pip install git+https://github.com/facebookresearch/segment-anything.git
 $pip install opencv-python pycocotools matplotlib onnxruntime onnx
 #+end_src
+
 ** Download weights
 - Download model checkpoints from [[https://github.com/facebookresearch/segment-anything?tab=readme-ov-file#model-checkpoints][here]].
   - h=Huge
@@ -87,11 +88,13 @@ from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 import numpy as np
 
 #+end_src
+
 *** Fix opencv-pyqt5 error
 #+begin_src python
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
 #+end_src
+
 *** Create overlay function
 #+begin_src python
 if not torch.cuda.is_available():
@@ -120,6 +123,7 @@ def show_anns(anns):
     return img
 
 #+end_src
+
 *** Setup SAM model
 #+begin_src python
 # sam model setup
@@ -131,6 +135,7 @@ root = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
 os.makedirs("./results", exist_ok=True)
 
 #+end_src
+
 *** Generate and save SAM results
 #+begin_src python
 data = {}
@@ -187,6 +192,7 @@ for label in os.listdir(root):
 with open('sam_data.pkl', 'wb') as handle:
     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 #+end_src
+
 ** Check attention 
 #+begin_src python :tangle ~/projects/ultrasound/check.py
 import torch
@@ -255,7 +261,6 @@ if __name__ == "__main__":
     o = model(x)
     print(o.size())
 #+end_src
-
 
 ** [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
 ** [[id:b9cdac99-0341-47a9-bf7a-59c1b6c87234][AutoSAM]] 

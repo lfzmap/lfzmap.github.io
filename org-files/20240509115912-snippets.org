@@ -253,7 +253,7 @@ trainer.test(model, dataloaders=test_loader)
 # key: code
 # --
 
-+begin_src python :tangle :makedirp yes
-+end_src
+#+begin_src python :tangle :mkdirp yes
+\#+end_src
 
 #+end_src

@@ -136,7 +136,8 @@ Prevent package.el loading packages prior to their init-file loading.
 (setq modus-themes-italic-constructs t
       modus-themes-bold-constructs nil)
 (mapc #'disable-theme custom-enabled-themes)
-(load-theme 'modus-operandi-tinted :no-confirm)
+;; (load-theme 'modus-operandi-tinted :no-confirm)
+(load-theme 'modus-vivendi :no-confirm)
 ;; (define-key global-map (kbd "<f5>") #'modus-themes-toggle)
 
 ;; (use-package ef-themes)
