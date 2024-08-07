@@ -3,9 +3,10 @@
 :END:
 #+title: SAM
 
-* Paper
+* SAM-1
+** Paper
 - https://arxiv.org/pdf/2304.02643.pdf
-* Basics
+** Basics
 Large language models pre-trained on large datasets (web-scale) are known as *Foundation models*. These models show very good performance on unseen dataset ie Zero-shot learning and Few-shot learning. Further they can also be used for various tasks or even out-of-distribution dataset. This is enabled by Prompt engineering, using text to prompt the model to give a valid response depending on the task.
 
 CLIP and ALIGN are examples of foundation model that tries to align text and image modalities together. Goal of SAM is /to create a foundation model for image segmentation/.
@@ -19,7 +20,7 @@ Ans 1: Promptable segmentation task
 Ans 2: Model with a flexible prompt encoder and mask generator
 Ans 3: A data engine using model itself to help the annotations
 
-* Segment Anything Task
+** Segment Anything Task
 In NLP task for pretraining foundation model is /next token prediction/. In segmentation a prompt would be set of points, bounding box, masks, free form text etc. A valid output would be a valid mask even if we give vague prompts for multiple objects, there should be a minimum one reasonable mask. 
 
 [[./img/samtask.png]]
@@ -38,7 +39,7 @@ Aim of SAM is to be adaptable for other segmentation tasks, like:
 
 SAM can act as a component in a larger system addressing different segmentation task.
 
-* Segment Anything Model
+** Segment Anything Model
 
 Constraints:
 1. Support Flexible prompts
@@ -54,7 +55,7 @@ Ans 3: A single prompt and embedding will generate multiple mask to handle the a
 
 [[./img/sammodel2.png]]
 
-** Image Encoder
+*** Image Encoder
 It can be any network that output $C \times H \times W$. SAM uses an MAE pretrained Vision transformer.
 
 TODO:
@@ -63,18 +64,18 @@ Transformer
 Vision transformer
 MAE ViT
 
-* Installation
+** Installation
 #+begin_src sh
 $pip install git+https://github.com/facebookresearch/segment-anything.git
 $pip install opencv-python pycocotools matplotlib onnxruntime onnx
 #+end_src
-* Download weights
+** Download weights
 - Download model checkpoints from [[https://github.com/facebookresearch/segment-anything?tab=readme-ov-file#model-checkpoints][here]].
   - h=Huge
   - l=Largw
   - B=base
-* Usage
-** Necessary imports 
+** Usage
+*** Necessary imports 
 #+begin_src python
 import os
 import pickle
@@ -86,12 +87,12 @@ from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 import numpy as np
 
 #+end_src
-** Fix opencv-pyqt5 error
+*** Fix opencv-pyqt5 error
 #+begin_src python
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
 #+end_src
-** Create overlay function
+*** Create overlay function
 #+begin_src python
 if not torch.cuda.is_available():
     raise Exception("CUDA not available!")
@@ -119,7 +120,7 @@ def show_anns(anns):
     return img
 
 #+end_src
-** Setup SAM model
+*** Setup SAM model
 #+begin_src python
 # sam model setup
 sam = sam_model_registry["vit_l"](checkpoint="ckpts/sam_vit_l_0b3195.pth")
@@ -130,7 +131,7 @@ root = "/home/lfz/projects/ultrasound/datasets/mediscan-seg"
 os.makedirs("./results", exist_ok=True)
 
 #+end_src
-** Generate and save SAM results
+*** Generate and save SAM results
 #+begin_src python
 data = {}
 for label in os.listdir(root):
@@ -186,7 +187,7 @@ for label in os.listdir(root):
 with open('sam_data.pkl', 'wb') as handle:
     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 #+end_src
-* Check attention 
+** Check attention 
 #+begin_src python :tangle ~/projects/ultrasound/check.py
 import torch
 import torch.nn as nn
@@ -256,6 +257,20 @@ if __name__ == "__main__":
 #+end_src
 
 
-* [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
-* [[id:b9cdac99-0341-47a9-bf7a-59c1b6c87234][AutoSAM]] 
-* [[id:652855c4-c6cb-476c-a8fd-39540e3e0c59][MobileSAM]] 
+** [[id:fc2fbd95-72de-4a25-9cb6-f491b48c29e1][Fine-tune SAM]] 
+** [[id:b9cdac99-0341-47a9-bf7a-59c1b6c87234][AutoSAM]] 
+** [[id:652855c4-c6cb-476c-a8fd-39540e3e0c59][MobileSAM]] 
+* SAM 2
+Paper [[https://ai.meta.com/research/publications/sam-2-segment-anything-in-images-and-videos/][Link]]
+** Introduction
+An image is only a static snapshot of the real world in which visual segments can exhibit complex motion, and with the rapid growth of multimedia content, a significant portion is now recorded with a temporal dimension, particularly in video data.
+*** Challenges regarding video
+- Appearence change due to motion, deformation, occlusion, lighting change
+- Low quality due to camera motion, blur, resolution
+- Processing of large number of frames
+
+An image is considered as a single frame video.
+Not restricted to objects of specific categories, but instead targeted to provide training data for segmenting any object with a valid boundary, including parts and subparts.
+** Model
+Unlike SAM, the frame embedding used by the SAM 2 decoder is not directly from an image encoder and is instead conditioned on memories of past predictions and prompted frames. It is possible for prompted frames to also come “from the future” relative to the current frame. Memories of frames are created by the memory encoder based on the current prediction and placed in a memory bank for use in subsequent frames. The memory attention operation takes the per-frame embedding from the image encoder and conditions it on the memory bank to produce an embedding that is then passed to the mask decoder.
+

@@ -501,6 +501,21 @@ Prevent package.el loading packages prior to their init-file loading.
 (setq org-babel-python-command "/usr/bin/python3")
 (setq python-shell-interpreter "/usr/bin/python3")
 #+end_src
+* Zig
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package zig-mode)
+#+end_src
+* Rust
+#+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes
+(use-package rust-mode)
+(setq rust-format-on-save t)
+(add-hook 'rust-mode-hook
+          (lambda () (prettify-symbols-mode)))
+(use-package ob-rust)
+(with-eval-after-load 'org
+  (require 'ob-rust)
+  (add-to-list 'org-babel-load-languages '(rust . t)))
+#+end_src
 
 * JavaScript
 #+begin_src emacs-lisp :tangle "~/.config/emacs/init.el" :makedirp yes

@@ -99,10 +99,10 @@ State and support an opinion in an online classroom discussion.
 [[./org-files/img/gre.png]]
 
 
-** 1: Analytical writing 
+** Analytical writing 
 *** Issue essay 1Q
 *** https://www.ets.org/gre/test-takers/general-test/prepare/content/analytical-writing.html
-** 2: Verbal Reasoning
+** Verbal Reasoning
 *** 2.1 Text completion 3Q
 *** 2.1 Sentence equivalence 4Q
 *** 2.1 Reading comprehension 5Q
@@ -114,8 +114,6 @@ https://www.ets.org/gre/test-takers/general-test/prepare/content/verbal-reasonin
 ** Quantitative Reasoning
 https://www.ets.org/gre/test-takers/general-test/prepare/content/quantitative-reasoning.html
 
-Issue essay
-no more argument essay
-
-Section 1 : Writing
-Section 2: Verbal
+*** Arithmetic
+PEMDAS = Paranthesis, Exponent, Multiplication, Division, Addition, Subtraction
+No. of integers = last included - first included + 1

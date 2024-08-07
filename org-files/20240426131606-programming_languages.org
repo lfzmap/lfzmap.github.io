@@ -22,9 +22,6 @@ same as machine language, except the command numbers have been replaced by lette
 ** High-level language
 Allow you to describe the program in a more natural language. A single command in a high-level language usually is equivalent to several commands in an assembly language.
 
-*** [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]]
-*** [[id:62040c0e-a0ca-4f42-a6ef-a9eb992ae15c][Emacs-Lisp]] 
-
 * Computer Architecture
 Modern computers are based on Von-neumann architercture/model. This model divides a computer
 two main components = CPU & Memory.
@@ -105,6 +102,10 @@ address to pointer and a number called /offset./
 
 * [[id:2ea4e782-48bf-412b-80dd-85c85f423700][Assembly]] 
 
+* Languages
+*** [[id:67355155-cdf9-4f54-8322-70048d0bde8b][JavaScript]] 
+*** [[id:62040c0e-a0ca-4f42-a6ef-a9eb992ae15c][Emacs-Lisp]] 
+*** [[id:f98f2af0-e360-4b1f-b411-ae8d6103ade7][Rust]] 
 * Libraries
 ** [[id:595bdfab-4ec2-439e-be2d-f73e454157c9][React]]   
 ** [[id:187bb0c2-d964-4651-a35b-ac2d2573dce7][React Native]] 
